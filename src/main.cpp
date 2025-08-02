@@ -1,3 +1,23 @@
+/**
+ * @file main.cpp
+ * @brief Main entry point for the C++ Game Engine with arcade fighter demo
+ * @author Ryan Butler
+ * @date 2025
+ *
+ * This file contains the main application entry point and demonstrates
+ * the complete game engine in action with two different demos:
+ * 1. Simple rendering test - Basic engine validation
+ * 2. Arcade fighter game - Full-featured game with ECS, state management, and gameplay
+ *
+ * The arcade fighter demonstrates:
+ * - Professional game state management (Menu, Playing, Game Over)
+ * - Entity-Component-System architecture
+ * - Real-time rendering with parallax backgrounds
+ * - Input handling and player controls
+ * - Collision detection and game mechanics
+ * - Scoring system and timed gameplay
+ */
+
 #include "Engine/Engine.h"
 #include "Engine/Window.h"
 #include "Engine/Renderer.h"
@@ -10,8 +30,27 @@
 #include <random>
 #include <chrono>
 
+/**
+ * @class ArcadeFighterGame
+ * @brief Complete arcade fighter game implementation using the engine
+ *
+ * This class demonstrates a full-featured game built on the engine framework,
+ * showcasing professional game development patterns including state management,
+ * ECS architecture, and comprehensive gameplay systems.
+ *
+ * Game Features:
+ * - Animated menu system with retro styling
+ * - Side-scrolling gameplay with parallax backgrounds
+ * - Player character with movement and boundaries
+ * - Multiple enemy types with AI patterns
+ * - 30-second timed gameplay with scoring
+ * - Game over screen with restart functionality
+ */
 class ArcadeFighterGame : public Engine {
 public:
+    /**
+     * @brief Constructor - initializes game state manager
+     */
     ArcadeFighterGame() : m_stateManager(nullptr) {}
 
     bool Initialize(const char* title, int width, int height) {

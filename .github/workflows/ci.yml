@@ -1,0 +1,171 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    name: Build and Test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        build_type: [Debug, Release]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          libsdl2-dev \
+          libsdl2-image-dev \
+          pkg-config \
+          doxygen \
+          graphviz
+
+    - name: Install dependencies (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        brew install sdl2 sdl2_image pkg-config cmake doxygen graphviz
+
+    - name: Configure CMake
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+    - name: Build
+      run: |
+        cmake --build build --config ${{ matrix.build_type }} -j$(nproc 2>/dev/null || sysctl -n hw.ncpu)
+
+    - name: Run Tests
+      run: |
+        cd test
+        chmod +x run_tests.sh
+        ./run_tests.sh
+
+    - name: Test Basic Functionality
+      run: |
+        cd build
+        timeout 10s echo "1" | ./bin/GameEngine || true
+
+  documentation:
+    name: Generate Documentation
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Doxygen
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen graphviz
+
+    - name: Generate Documentation
+      run: |
+        chmod +x generate_docs.sh
+        ./generate_docs.sh
+
+    - name: Deploy to GitHub Pages
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs/html
+        publish_branch: gh-pages
+        force_orphan: true
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang-format cppcheck
+
+    - name: Check code formatting
+      run: |
+        find src include -name "*.cpp" -o -name "*.h" | xargs clang-format --dry-run --Werror
+
+    - name: Run static analysis
+      run: |
+        cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem src/ include/
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [build-and-test, documentation]
+    if: github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, '[release]')
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          cmake \
+          libsdl2-dev \
+          libsdl2-image-dev \
+          pkg-config
+
+    - name: Build Release
+      run: |
+        cmake -B build -DCMAKE_BUILD_TYPE=Release
+        cmake --build build --config Release
+
+    - name: Package Release
+      run: |
+        mkdir -p release
+        cp -r build/bin release/
+        cp -r assets release/ 2>/dev/null || true
+        cp README.md release/
+        cp run_game.sh release/
+        tar -czf game-engine-release.tar.gz release/
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ github.run_number }}
+        name: Game Engine Release v${{ github.run_number }}
+        body: |
+          ## C++ Game Engine Release
+          
+          ### Features
+          - Complete ECS architecture
+          - SDL2 rendering system
+          - Comprehensive Doxygen documentation
+          - Arcade fighter demo game
+          
+          ### Documentation
+          View the complete API documentation at: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/
+          
+          ### Quick Start
+          ```bash
+          tar -xzf game-engine-release.tar.gz
+          cd release
+          chmod +x run_game.sh
+          ./run_game.sh
+          ```
+        files: |
+          game-engine-release.tar.gz
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

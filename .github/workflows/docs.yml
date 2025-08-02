@@ -1,0 +1,147 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'include/**'
+      - 'src/**'
+      - 'README.md'
+      - 'Doxyfile'
+      - 'generate_docs.sh'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'include/**'
+      - 'src/**'
+      - 'README.md'
+      - 'Doxyfile'
+      - 'generate_docs.sh'
+
+jobs:
+  generate-docs:
+    name: Generate and Deploy Documentation
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Doxygen and dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen graphviz
+
+    - name: Verify Doxygen installation
+      run: |
+        doxygen --version
+        dot -V
+
+    - name: Generate documentation
+      run: |
+        chmod +x generate_docs.sh
+        ./generate_docs.sh
+
+    - name: Check documentation output
+      run: |
+        ls -la docs/
+        ls -la docs/html/
+        echo "Documentation files generated:"
+        find docs/html -name "*.html" | head -10
+
+    - name: Deploy to GitHub Pages (main branch only)
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./docs/html
+        publish_branch: gh-pages
+        force_orphan: true
+        user_name: 'github-actions[bot]'
+        user_email: 'github-actions[bot]@users.noreply.github.com'
+        commit_message: 'Deploy documentation from ${{ github.sha }}'
+
+    - name: Upload documentation artifacts (PR only)
+      if: github.event_name == 'pull_request'
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation-preview
+        path: docs/html/
+        retention-days: 7
+
+    - name: Comment on PR with documentation preview
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const { owner, repo, number } = context.issue;
+          const run_id = context.runId;
+          
+          const comment = `## 📚 Documentation Preview
+          
+          The documentation has been generated for this PR. You can download the preview from the [workflow artifacts](https://github.com/${owner}/${repo}/actions/runs/${run_id}).
+          
+          ### Changes in this PR:
+          - Documentation will be updated when this PR is merged
+          - Check the artifacts above to preview the changes
+          
+          ### Live Documentation:
+          The live documentation is available at: https://${owner}.github.io/${repo}/
+          `;
+          
+          github.rest.issues.createComment({
+            owner,
+            repo,
+            issue_number: number,
+            body: comment
+          });
+
+  validate-docs:
+    name: Validate Documentation Quality
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install Doxygen
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y doxygen
+
+    - name: Check for undocumented items
+      run: |
+        # Generate docs with warnings
+        doxygen Doxyfile 2>&1 | tee doxygen.log
+        
+        # Check for warnings about undocumented items
+        if grep -i "warning" doxygen.log; then
+          echo "⚠️ Documentation warnings found:"
+          grep -i "warning" doxygen.log
+          echo ""
+          echo "Please add documentation for the items listed above."
+          # Don't fail the build for warnings, just report them
+        else
+          echo "✅ No documentation warnings found!"
+        fi
+
+    - name: Check documentation coverage
+      run: |
+        echo "📊 Documentation Coverage Report:"
+        echo "=================================="
+        
+        # Count total public functions/classes in headers
+        total_items=$(find include/ -name "*.h" -exec grep -E "(class |struct |public:|template.*class)" {} \; | wc -l)
+        
+        # Count documented items (rough estimate)
+        documented_items=$(find include/ -name "*.h" -exec grep -l "@brief\|@class\|@struct" {} \; | wc -l)
+        
+        echo "Header files with documentation: $documented_items"
+        echo "Total header files: $(find include/ -name "*.h" | wc -l)"
+        
+        if [ $documented_items -gt 0 ]; then
+          echo "✅ Documentation is present in header files"
+        else
+          echo "⚠️ Consider adding more documentation"
+        fi

@@ -1,6 +1,6 @@
-# 🎮 Arcade Fighter Game Engine
+# 🎮 C++ Game Engine with ECS Architecture
 
-A complete C++ game engine featuring a classic side-scrolling arcade fighter game, built for learning game development fundamentals.
+A complete C++ game engine featuring Entity-Component-System architecture, SDL2 rendering, and a classic arcade fighter demo game. Built for learning game development fundamentals with professional-grade code documentation.
 
 ## 🎯 Features
 
@@ -12,6 +12,7 @@ A complete C++ game engine featuring a classic side-scrolling arcade fighter gam
 - **Entity-Component-System (ECS)** architecture
 - **Professional state management** (Menu, Playing, Game Over)
 - **AABB collision detection** with physics response
+- **Complete Doxygen documentation** (C++ equivalent to JSDoc)
 
 ### Game Features
 - **Animated start menu** with retro arcade styling
@@ -23,57 +24,61 @@ A complete C++ game engine featuring a classic side-scrolling arcade fighter gam
 - **Scoring system** with movement bonuses
 - **Game over screen** with restart options
 
-## 🛠️ Prerequisites
+## 🚀 Quick Start (30 seconds)
 
-### Required Software
-- **CMake 3.16+**
-- **C++17 compatible compiler** (Clang/GCC)
-- **SDL2 and SDL2_image libraries**
-- **pkg-config** (for dependency management)
-
-### macOS Installation
+### Option 1: Instant Setup
 ```bash
-# Install dependencies using Homebrew
-brew install sdl2 sdl2_image pkg-config cmake
-
-# Verify installation
-sdl2-config --version
-pkg-config --modversion sdl2
+# From project root - builds and runs automatically
+./run_game.sh
 ```
 
-## 🚀 Quick Start
-
-### 1. Clone and Build
+### Option 2: Manual Setup
 ```bash
-# Navigate to your development directory
-cd /path/to/your/projects
+# 1. Install dependencies (macOS)
+brew install sdl2 sdl2_image pkg-config cmake doxygen
 
-# If you already have the project, navigate to it
-cd cppExploration
-
-# Create build directory and compile
-mkdir -p build
-cd build
-cmake ..
-make
-
-# Verify build success
-ls bin/GameEngine  # Should show the executable
+# 2. Build and run
+mkdir -p build && cd build
+cmake .. && make
+./bin/GameEngine  # Choose option 2 for full game
 ```
 
-### 2. Run the Game
+## 🎮 Controls
+
+### Menu Navigation
+- **↑/↓ Arrow Keys** or **W/S**: Navigate menu
+- **Enter** or **Space**: Select option
+- **Escape**: Quit
+
+### In-Game
+- **Arrow Keys** or **WASD**: Move player
+- **Escape**: Return to menu
+
+## 📚 Documentation
+
+This project uses **Doxygen** for comprehensive code documentation (C++ equivalent to JSDoc):
+
 ```bash
-# From the build directory
-./bin/GameEngine
+# Generate HTML documentation
+./generate_docs.sh
 
-# You'll see a menu:
-# 1. Simple Test (basic rendering validation)
-# 2. Arcade Fighter (full game experience)
-
-# Choose option 2 for the complete game
+# View documentation
+open docs/html/index.html
 ```
 
-### 3. Game Controls
+### Documentation Features
+- **Complete API reference** with class hierarchies
+- **Code examples** and usage patterns
+- **Cross-referenced** functions and classes
+- **Search functionality** for quick navigation
+- **Professional HTML output** with diagrams
+- **Auto-deployed** to GitHub Pages: [View Live Documentation](https://rbutler114.github.io/C-EngineFun/)
+
+### CI/CD Integration
+- **Automated builds** on macOS and Ubuntu
+- **Documentation deployment** on every commit to main
+- **Code quality checks** with clang-format and cppcheck
+- **Automated testing** with comprehensive test suite
 
 #### Menu Navigation
 - **Arrow Keys (↑/↓)** or **W/S**: Navigate menu options
@@ -153,60 +158,36 @@ g++ -std=c++17 -I../include -I/opt/homebrew/include \
 ./test_input
 ```
 
-## 🔧 Troubleshooting
+## 📁 Project Structure
 
-### Common Issues
-
-#### "SDL2/SDL.h not found"
-```bash
-# Reinstall SDL2 dependencies
-brew uninstall sdl2 sdl2_image
-brew install sdl2 sdl2_image pkg-config
-
-# Verify installation paths
-brew --prefix sdl2
-pkg-config --cflags sdl2
+```
+cppExploration/
+├── README.md              # This documentation
+├── CMakeLists.txt          # Build configuration
+├── Doxyfile               # Doxygen documentation config
+├── generate_docs.sh       # Documentation generation script
+├── run_game.sh           # Quick start script
+├── src/                  # Source files (documented)
+│   ├── main.cpp          # Entry point with game selection
+│   ├── Engine/           # Core engine implementation
+│   ├── Game/             # Game states implementation
+│   ├── ECS/              # Entity-Component-System implementation
+│   └── Scenes/           # Scene management implementation
+├── include/              # Header files (fully documented)
+│   ├── Engine/          # Engine headers
+│   ├── Game/            # Game state headers
+│   ├── ECS/             # ECS system headers
+│   └── Scenes/          # Scene management headers
+├── docs/                # Generated documentation
+│   └── html/            # HTML documentation files
+├── examples/            # Example code and demos
+├── test/               # Unit tests and validation
+└── assets/             # Game assets (textures, sounds)
 ```
 
-#### "Game window appears blank"
-1. **Check window focus**: Click on the game window
-2. **Verify rendering**: Run the simple test first (`option 1`)
-3. **Check console output**: Look for rendering debug messages
-4. **Test basic rendering**: Run `test/test_menu_rendering.cpp`
+## 🏗️ Architecture Overview
 
-#### "Input not responding"
-1. **Ensure window has focus**: Click on the game window
-2. **Check console**: Look for "Menu input check" messages
-3. **Test input system**: Run `test/test_input_system.cpp`
-4. **Try different keys**: Use both arrow keys and WASD
-
-#### "Build fails"
-```bash
-# Clean and rebuild
-cd build
-make clean
-rm -rf *
-cmake ..
-make
-
-# Check dependencies
-brew list | grep sdl2
-pkg-config --exists sdl2 && echo "SDL2 found" || echo "SDL2 missing"
-```
-
-## 🎓 Learning Resources
-
-### Documentation
-- **README.md**: This file - complete setup and usage guide
-- **TUTORIAL.md**: Step-by-step learning guide for game development
-- **test/**: Automated testing suite with validation scripts
-
-### Code Examples
-- **examples/ECSExample.cpp**: Complete ECS demo with collision detection
-- **src/main.cpp**: Main game implementation with state management
-- **test/test_*.cpp**: Individual component tests and validation
-
-### Architecture Overview
+### Engine Core
 ```cpp
 // Basic Engine Usage
 class MyGame : public Engine {
@@ -214,59 +195,78 @@ protected:
     void Update(float deltaTime) override {
         // Game logic here
     }
-
     void Render() override {
         // Rendering here
     }
 };
-
-// ECS System Usage
-auto entityManager = std::make_unique<EntityManager>();
-entityManager->AddSystem<MovementSystem>();
-entityManager->AddSystem<RenderSystem>(renderer);
-
-Entity player = entityManager->CreateEntity();
-entityManager->AddComponent<TransformComponent>(player, 100.0f, 100.0f);
-entityManager->AddComponent<VelocityComponent>(player, 0.0f, 0.0f);
 ```
 
-## 🎯 Learning Objectives
+### Entity-Component-System
+```cpp
+// ECS Usage Example
+Entity player = entityManager.CreateEntity();
+entityManager.AddComponent<PositionComponent>(player, {100.0f, 200.0f});
+entityManager.AddComponent<VelocityComponent>(player, {50.0f, 0.0f});
 
-This engine demonstrates:
+// Systems process entities with specific components
+movementSystem.Update(deltaTime);  // Updates all entities with Position + Velocity
+```
+
+## 🧪 Testing & Validation
+
+```bash
+# Quick validation
+echo "1" | ./bin/GameEngine  # Test basic rendering
+
+# Run all tests
+cd test && ./run_tests.sh
+
+# Individual component tests
+./test/test_basic_rendering
+./test/test_input_system
+./test/test_menu_rendering
+./test/test_state_management
+```
+
+## 🔧 Troubleshooting
+
+### Quick Fixes
+```bash
+# Clean rebuild
+cd build && make clean && cmake .. && make
+
+# Check dependencies
+brew list | grep sdl2
+
+# Verify installation
+pkg-config --cflags sdl2
+```
+
+### Expected Console Output
+```
+🥊 ARCADE FIGHTER GAME 🥊
+Added game state: 1
+Added game state: 3
+Entering Menu State
+🎨 MenuState::Render() called (frame 1)
+Engine initialized successfully!
+```
+
+**If you see this output, everything is working perfectly!** ✅
+
+## 🎯 Key Learning Concepts
+
+This engine demonstrates professional game development patterns:
 - **Game loop architecture** with proper frame timing
-- **Real-time rendering** with SDL2 and custom graphics
-- **Input handling patterns** for responsive controls
 - **Entity-Component-System** for scalable game architecture
 - **State management** for different game phases
+- **Real-time rendering** with SDL2 and custom graphics
+- **Input handling patterns** for responsive controls
 - **Collision detection** with AABB and physics response
-- **Camera systems** for side-scrolling gameplay
-- **Professional game structure** with proper separation of concerns
-
-## 🚀 Next Steps
-
-### Extend the Game
-1. **Add sound effects** using SDL2_mixer
-2. **Implement sprite animations** for characters
-3. **Create more enemy types** with different behaviors
-4. **Add power-ups and collectibles**
-5. **Implement multiple levels** with different backgrounds
-6. **Add particle effects** for visual polish
-
-### Learn More
-1. **Study the ECS architecture** in `src/ECS/`
-2. **Examine state management** in `src/Game/`
-3. **Understand rendering pipeline** in `src/Engine/`
-4. **Run automated tests** to see validation techniques
-5. **Read TUTORIAL.md** for step-by-step learning
-
+- **Complete code documentation** using Doxygen
 ---
 
-## 📞 Support
-
-If you encounter issues:
-1. **Check the troubleshooting section** above
-2. **Run the automated tests** to validate your setup
-3. **Examine console output** for debug information
-4. **Try the simple rendering test** first to isolate issues
-
-**The game engine is fully functional and tested!** 🎮✨
+**🎮 Total Setup Time: ~30 seconds**
+**🏗️ Architecture: Professional ECS Game Engine**
+**📚 Documentation: Complete Doxygen API Reference**
+**✅ Status: Fully Functional and Documented**

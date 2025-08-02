@@ -188,6 +188,20 @@ gmon.out
 .env.local
 .env.*.local
 
+# Documentation (generated files - keep source files)
+docs/html/
+docs/latex/
+docs/xml/
+docs/man/
+docs/rtf/
+*.tag
+
+# Keep documentation source files
+!Doxyfile
+!generate_docs.sh
+!README.md
+!DOCUMENTATION_SUMMARY.md
+
 # Custom build artifacts (add your specific files here)
 # assets/generated/
 # config/local_config.json

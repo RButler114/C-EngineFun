@@ -1,3 +1,10 @@
+/**
+ * @file Engine.cpp
+ * @brief Implementation of the core game engine class
+ * @author Ryan Butler
+ * @date 2025
+ */
+
 #include "Engine/Engine.h"
 #include "Engine/Window.h"
 #include "Engine/Renderer.h"
