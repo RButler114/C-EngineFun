@@ -3,6 +3,7 @@
 #include "Engine/Renderer.h"
 #include "Engine/InputManager.h"
 #include "Engine/Engine.h"
+#include "Engine/AudioManager.h"
 #include "Engine/BitmapFont.h"
 #include <iostream>
 
@@ -28,6 +29,11 @@ void MenuState::OnEnter() {
     m_selectedOption = 0;
     m_blinkTimer = 0.0f;
     m_showSelection = true;
+
+    // Load menu sounds
+    if (GetEngine()->GetAudioManager()) {
+        GetEngine()->GetAudioManager()->LoadSound("menu_select", "assets/sounds/menu_select.wav", SoundType::SOUND_EFFECT);
+    }
 }
 
 void MenuState::OnExit() {
@@ -119,6 +125,12 @@ void MenuState::NavigateUp() {
     }
     m_showSelection = true;
     m_blinkTimer = 0.0f;
+
+    // Play menu navigation sound
+    if (GetEngine()->GetAudioManager()) {
+        GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.7f);
+    }
+
     std::cout << "🔼 Menu navigation UP - Selected option: " << m_selectedOption << " (" << m_menuOptions[m_selectedOption] << ")" << std::endl;
 }
 
@@ -129,6 +141,12 @@ void MenuState::NavigateDown() {
     }
     m_showSelection = true;
     m_blinkTimer = 0.0f;
+
+    // Play menu navigation sound
+    if (GetEngine()->GetAudioManager()) {
+        GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.7f);
+    }
+
     std::cout << "🔽 Menu navigation DOWN - Selected option: " << m_selectedOption << " (" << m_menuOptions[m_selectedOption] << ")" << std::endl;
 }
 

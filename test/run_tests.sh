@@ -38,7 +38,7 @@ run_test() {
         ../src/Game/*.cpp \
         ../src/ECS/*.cpp \
         ../src/Scenes/*.cpp \
-        -lSDL2 -lSDL2_image \
+        -lSDL2 -lSDL2_image -lSDL2_mixer \
         -o test_$test_executable
     
     if [ $? -ne 0 ]; then
@@ -117,7 +117,10 @@ run_test "Basic Rendering System" "test_basic_rendering" 10
 # Test 2: State Management
 run_test "State Management System" "test_state_management" 15
 
-# Test 3: Input System (this one might need manual verification)
+# Test 3: Audio System
+run_test "Audio System" "test_audio_system" 10
+
+# Test 4: Input System (this one might need manual verification)
 echo ""
 echo -e "${YELLOW}⚠️  Next test requires manual interaction${NC}"
 echo "The input test will open a window. Please interact with it as instructed."
@@ -174,6 +177,14 @@ You should see:
 4. Final score displayed
 5. Options to restart or return to menu
 Did this work correctly?"
+
+run_manual_test "Audio System Integration" \
+"Test the audio features in the game:
+1. Menu navigation should play selection sounds
+2. Background music should play during gameplay
+3. Player movement (W/Up key) should play jump sounds
+4. All sounds should be audible and clear
+Did the audio work correctly?"
 
 # Final results
 echo ""

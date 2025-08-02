@@ -9,6 +9,7 @@
 #include "Engine/Window.h"
 #include "Engine/Renderer.h"
 #include "Engine/InputManager.h"
+#include "Engine/AudioManager.h"
 #include <SDL2/SDL.h>
 #include <iostream>
 #include <thread>
@@ -48,6 +49,13 @@ bool Engine::Initialize(const char* title, int width, int height) {
 
     // Create input manager
     m_inputManager = std::make_unique<InputManager>();
+
+    // Create audio manager
+    m_audioManager = std::make_unique<AudioManager>();
+    if (!m_audioManager->Initialize()) {
+        std::cerr << "Failed to initialize audio manager!" << std::endl;
+        return false;
+    }
 
     m_isRunning = true;
     m_lastFrameTime = std::chrono::high_resolution_clock::now();
@@ -99,7 +107,12 @@ void Engine::Shutdown() {
     }
     
     m_inputManager.reset();
-    
+
+    if (m_audioManager) {
+        m_audioManager->Shutdown();
+        m_audioManager.reset();
+    }
+
     SDL_Quit();
     std::cout << "Engine shut down successfully!" << std::endl;
 }

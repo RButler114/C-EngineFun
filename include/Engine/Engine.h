@@ -13,6 +13,7 @@
 class Window;
 class Renderer;
 class InputManager;
+class AudioManager;
 
 /**
  * @class Engine
@@ -119,6 +120,12 @@ public:
     InputManager* GetInputManager() const { return m_inputManager.get(); }
 
     /**
+     * @brief Get the audio manager instance
+     * @return Pointer to the AudioManager object, or nullptr if not initialized
+     */
+    AudioManager* GetAudioManager() const { return m_audioManager.get(); }
+
+    /**
      * @brief Get the time elapsed since last frame
      * @return Delta time in seconds as a float
      */
@@ -202,6 +209,7 @@ private:
     std::unique_ptr<Window> m_window;           ///< Window management system
     std::unique_ptr<Renderer> m_renderer;       ///< Rendering system
     std::unique_ptr<InputManager> m_inputManager; ///< Input handling system
+    std::unique_ptr<AudioManager> m_audioManager; ///< Audio management system
 
     bool m_isRunning;                           ///< Whether the game loop is active
     int m_targetFPS;                            ///< Target frames per second (default: 60)

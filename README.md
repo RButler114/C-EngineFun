@@ -12,10 +12,11 @@ A complete C++ game engine featuring Entity-Component-System architecture, SDL2 
 - **Entity-Component-System (ECS)** architecture
 - **Professional state management** (Menu, Playing, Game Over)
 - **AABB collision detection** with physics response
+- **Complete audio system** with SDL_mixer (sound effects, music, 3D audio)
 - **Complete Doxygen documentation** (C++ equivalent to JSDoc)
 
 ### Game Features
-- **Animated start menu** with retro arcade styling
+- **Animated start menu** with retro arcade styling and sound effects
 - **Side-scrolling gameplay** with smooth camera following
 - **Parallax background layers** (mountains, buildings, sky)
 - **Player character** with movement and boundaries
@@ -23,6 +24,7 @@ A complete C++ game engine featuring Entity-Component-System architecture, SDL2 
 - **30-second timed gameplay** with countdown and warnings
 - **Scoring system** with movement bonuses
 - **Game over screen** with restart options
+- **Dynamic audio** with background music, jump sounds, and collision effects
 
 ## 🚀 Quick Start (30 seconds)
 
@@ -35,7 +37,7 @@ A complete C++ game engine featuring Entity-Component-System architecture, SDL2 
 ### Option 2: Manual Setup
 ```bash
 # 1. Install dependencies (macOS)
-brew install sdl2 sdl2_image pkg-config cmake doxygen
+brew install sdl2 sdl2_image sdl2_mixer pkg-config cmake doxygen
 
 # 2. Build and run
 mkdir -p build && cd build
@@ -212,6 +214,31 @@ entityManager.AddComponent<VelocityComponent>(player, {50.0f, 0.0f});
 movementSystem.Update(deltaTime);  // Updates all entities with Position + Velocity
 ```
 
+### Audio System
+```cpp
+// Audio Manager Usage
+AudioManager audioManager;
+audioManager.Initialize();
+
+// Load and play sounds
+audioManager.LoadSound("jump", "assets/sounds/jump.wav", SoundType::SOUND_EFFECT);
+audioManager.PlaySound("jump", 0.8f);  // 80% volume
+
+// Background music
+audioManager.LoadMusic("background", "assets/music/background.wav");
+audioManager.PlayMusic("background", 0.5f, -1);  // 50% volume, loop infinitely
+
+// ECS Audio Integration
+Entity player = entityManager.CreateEntity();
+entityManager.AddComponent<AudioComponent>(player, "jump", 0.8f, false, false, true);
+entityManager.AddSystem<AudioSystem>(audioManager);
+
+// 3D Positional Audio
+audioComp->is3D = true;
+audioComp->maxDistance = 500.0f;
+audioSystem->SetListenerPosition(playerX, playerY);
+```
+
 ## 🧪 Testing & Validation
 
 ```bash
@@ -226,6 +253,10 @@ cd test && ./run_tests.sh
 ./test/test_input_system
 ./test/test_menu_rendering
 ./test/test_state_management
+./test/test_audio_system
+
+# Audio system demo
+./examples/AudioExample
 ```
 
 ## 🔧 Troubleshooting

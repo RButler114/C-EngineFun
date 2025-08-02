@@ -8,6 +8,7 @@
 #pragma once
 
 #include "Entity.h"
+#include <string>
 
 /**
  * @struct Component
@@ -177,6 +178,55 @@ struct CollisionComponent : public Component {
      * @param trigger Whether this is a trigger collider
      */
     CollisionComponent(float w, float h, bool trigger) : Component(), width(w), height(h), isTrigger(trigger) {}
+};
+
+/**
+ * @struct AudioComponent
+ * @brief Component that defines audio properties for an entity
+ *
+ * Used by AudioSystem to play sounds based on entity events or states.
+ * Supports multiple sound effects per entity with different triggers.
+ */
+struct AudioComponent : public Component {
+    std::string soundName;          ///< Name of the sound to play (must be loaded in AudioManager)
+    float volume = 1.0f;            ///< Volume multiplier (0.0 - 1.0)
+    float pitch = 1.0f;             ///< Pitch multiplier (not implemented in basic version)
+    bool looping = false;           ///< Whether the sound should loop
+    bool playOnCreate = false;      ///< Play sound when component is added
+    bool playOnCollision = false;   ///< Play sound when entity collides
+    bool playOnDestroy = false;     ///< Play sound when entity is destroyed
+    bool is3D = false;              ///< Whether to use 3D positional audio
+    float maxDistance = 1000.0f;    ///< Maximum distance for 3D audio
+    int currentChannel = -1;        ///< Currently playing channel (-1 if not playing)
+
+    /**
+     * @brief Default constructor
+     */
+    AudioComponent() = default;
+
+    /**
+     * @brief Constructor with sound name
+     * @param sound Name of the sound to play
+     */
+    AudioComponent(const std::string& sound) : Component(), soundName(sound) {}
+
+    /**
+     * @brief Constructor with sound name and volume
+     * @param sound Name of the sound to play
+     * @param vol Volume multiplier
+     */
+    AudioComponent(const std::string& sound, float vol) : Component(), soundName(sound), volume(vol) {}
+
+    /**
+     * @brief Constructor with full parameters
+     * @param sound Name of the sound to play
+     * @param vol Volume multiplier
+     * @param loop Whether to loop the sound
+     * @param onCreate Play on component creation
+     * @param onCollision Play on collision
+     */
+    AudioComponent(const std::string& sound, float vol, bool loop, bool onCreate = false, bool onCollision = false)
+        : Component(), soundName(sound), volume(vol), looping(loop), playOnCreate(onCreate), playOnCollision(onCollision) {}
 };
 
 /** @} */ // end of Components group

@@ -4,6 +4,7 @@
 #include "Engine/Renderer.h"
 #include "Engine/InputManager.h"
 #include "Engine/Engine.h"
+#include "Engine/AudioManager.h"
 #include "Engine/BitmapFont.h"
 #include "ECS/ECS.h"
 #include <iostream>
@@ -32,6 +33,19 @@ void PlayingState::OnEnter() {
     // Add systems
     m_entityManager->AddSystem<MovementSystem>();
     m_entityManager->AddSystem<RenderSystem>(GetRenderer());
+
+    // Add audio system if audio manager is available
+    if (GetEngine()->GetAudioManager()) {
+        m_entityManager->AddSystem<AudioSystem>(*GetEngine()->GetAudioManager());
+
+        // Load game sounds
+        GetEngine()->GetAudioManager()->LoadSound("jump", "assets/sounds/jump.wav", SoundType::SOUND_EFFECT);
+        GetEngine()->GetAudioManager()->LoadSound("collision", "assets/sounds/collision.wav", SoundType::SOUND_EFFECT);
+        GetEngine()->GetAudioManager()->LoadMusic("background", "assets/music/background.wav");
+
+        // Start background music
+        GetEngine()->GetAudioManager()->PlayMusic("background", 0.3f, -1);
+    }
     
     // Create game entities
     CreatePlayer();
@@ -184,11 +198,18 @@ void PlayingState::HandleInput() {
     }
 
     // Vertical movement (constrained to ground level area)
-    if (input->IsKeyPressed(SDL_SCANCODE_UP) || input->IsKeyPressed(SDL_SCANCODE_W)) {
-        if (m_playerY > 350.0f) { // Don't go too high
-            m_playerVelY = -speed;
+    static bool wasMovingUp = false;
+    bool isMovingUp = (input->IsKeyPressed(SDL_SCANCODE_UP) || input->IsKeyPressed(SDL_SCANCODE_W)) && m_playerY > 350.0f;
+
+    if (isMovingUp) {
+        m_playerVelY = -speed;
+
+        // Play jump sound when starting to move up
+        if (!wasMovingUp && GetEngine()->GetAudioManager()) {
+            GetEngine()->GetAudioManager()->PlaySound("jump", 0.8f);
         }
     }
+    wasMovingUp = isMovingUp;
     if (input->IsKeyPressed(SDL_SCANCODE_DOWN) || input->IsKeyPressed(SDL_SCANCODE_S)) {
         if (m_playerY < 450.0f) { // Don't go below ground
             m_playerVelY = speed;
@@ -238,6 +259,7 @@ void PlayingState::CreatePlayer() {
     auto* transform = m_entityManager->AddComponent<TransformComponent>(m_player, playerX, playerY);
     auto* velocity = m_entityManager->AddComponent<VelocityComponent>(m_player, 0.0f, 0.0f);
     auto* render = m_entityManager->AddComponent<RenderComponent>(m_player, 32, 48, 0, 255, 0); // Green player
+    auto* audio = m_entityManager->AddComponent<AudioComponent>(m_player, "jump", 0.8f, false, false, false); // Jump sound on demand
 
     std::cout << "Added components to player:" << std::endl;
     std::cout << "  Transform: " << (transform ? "OK" : "FAILED") << " pos(" << (transform ? transform->x : 0) << "," << (transform ? transform->y : 0) << ")" << std::endl;
@@ -272,6 +294,7 @@ void PlayingState::CreateEnemies() {
 
         auto* render = m_entityManager->AddComponent<RenderComponent>(enemy, 28, 44,
                                                      enemyColor.r, enemyColor.g, enemyColor.b);
+        auto* audio = m_entityManager->AddComponent<AudioComponent>(enemy, "collision", 0.6f, false, false, true); // Collision sound
 
         std::cout << "Created enemy " << i << " with ID: " << enemy.GetID() << std::endl;
         std::cout << "  Transform: " << (transform ? "OK" : "FAILED") << " pos(" << (transform ? transform->x : 0) << "," << (transform ? transform->y : 0) << ")" << std::endl;
