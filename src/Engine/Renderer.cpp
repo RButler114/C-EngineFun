@@ -10,7 +10,9 @@ Texture::~Texture() {
 
 bool Texture::LoadFromFile(const std::string& path, SDL_Renderer* renderer) {
     Free();
-    
+
+
+
     SDL_Surface* loadedSurface = IMG_Load(path.c_str());
     if (!loadedSurface) {
         std::cerr << "Unable to load image " << path << "! SDL_image Error: " << IMG_GetError() << std::endl;
@@ -125,6 +127,8 @@ void Renderer::DrawPoint(int x, int y, const Color& color) {
 }
 
 std::shared_ptr<Texture> Renderer::LoadTexture(const std::string& path) {
+
+
     // Check if texture is already cached
     auto it = m_textureCache.find(path);
     if (it != m_textureCache.end()) {
@@ -152,4 +156,19 @@ void Renderer::DrawTexture(std::shared_ptr<Texture> texture, const Rectangle& sr
         SDL_Rect src = { srcRect.x, srcRect.y, srcRect.width, srcRect.height };
         texture->Render(m_renderer, destRect.x, destRect.y, destRect.width, destRect.height, &src);
     }
+}
+
+void Renderer::DrawTexture(std::shared_ptr<Texture> texture, const Rectangle& srcRect, const Rectangle& destRect, bool flipHorizontal, bool flipVertical) {
+    if (!texture) return;
+
+    SDL_Rect src = { srcRect.x, srcRect.y, srcRect.width, srcRect.height };
+    SDL_Rect dest = { destRect.x, destRect.y, destRect.width, destRect.height };
+
+    // Determine flip flags
+    SDL_RendererFlip flip = SDL_FLIP_NONE;
+    if (flipHorizontal) flip = static_cast<SDL_RendererFlip>(flip | SDL_FLIP_HORIZONTAL);
+    if (flipVertical) flip = static_cast<SDL_RendererFlip>(flip | SDL_FLIP_VERTICAL);
+
+    // Use SDL_RenderCopyEx for flipping support
+    SDL_RenderCopyEx(m_renderer, texture->GetSDLTexture(), &src, &dest, 0.0, nullptr, flip);
 }

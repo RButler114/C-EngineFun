@@ -14,6 +14,8 @@
 #include <vector>
 #include <memory>
 #include <typeindex>
+#include <type_traits>
+#include <iostream>
 #include <algorithm>
 
 /**

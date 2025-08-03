@@ -81,6 +81,7 @@ public:
     
     int GetWidth() const { return m_width; }
     int GetHeight() const { return m_height; }
+    SDL_Texture* GetSDLTexture() const { return m_texture; }
 
 private:
     SDL_Texture* m_texture;
@@ -109,6 +110,7 @@ public:
     std::shared_ptr<Texture> LoadTexture(const std::string& path);
     void DrawTexture(std::shared_ptr<Texture> texture, int x, int y);
     void DrawTexture(std::shared_ptr<Texture> texture, const Rectangle& srcRect, const Rectangle& destRect);
+    void DrawTexture(std::shared_ptr<Texture> texture, const Rectangle& srcRect, const Rectangle& destRect, bool flipHorizontal, bool flipVertical);
 
     // Getters
     SDL_Renderer* GetSDLRenderer() const { return m_renderer; }

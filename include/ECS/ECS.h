@@ -56,3 +56,5 @@
 #include "RenderSystem.h"
 #include "CollisionSystem.h"
 #include "AudioSystem.h"
+#include "AnimationComponent.h"
+#include "AnimationSystem.h"

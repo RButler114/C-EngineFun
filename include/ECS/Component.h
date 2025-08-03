@@ -9,6 +9,8 @@
 
 #include "Entity.h"
 #include <string>
+#include <cstring>
+#include <iostream>
 
 /**
  * @struct Component
@@ -145,6 +147,76 @@ struct RenderComponent : public Component {
      */
     RenderComponent(int w, int h, unsigned char red, unsigned char green, unsigned char blue)
         : Component(), width(w), height(h), r(red), g(green), b(blue) {}
+};
+
+/**
+ * @struct SpriteComponent
+ * @brief Component that defines sprite-based rendering for entities
+ *
+ * Extends rendering capabilities to support texture-based sprites with
+ * animation frames, sprite sheets, and texture paths. Can be used alongside
+ * or instead of RenderComponent for more advanced visual representation.
+ *
+ * Features:
+ * - Texture-based rendering from image files
+ * - Sprite sheet support with frame-based animation
+ * - Configurable frame dimensions and animation timing
+ * - Source rectangle specification for sprite sheets
+ * - Scaling and visibility controls
+ *
+ * @example
+ * ```cpp
+ * Entity player = entityManager.CreateEntity();
+ * entityManager.AddComponent<TransformComponent>(player, 100.0f, 200.0f);
+ * entityManager.AddComponent<SpriteComponent>(player, "assets/sprites/player/hero.png", 32, 32);
+ * ```
+ */
+struct SpriteComponent : public Component {
+    std::string texturePath;        ///< Path to the texture file
+    int width = 32;                 ///< Width of sprite frame in pixels
+    int height = 32;                ///< Height of sprite frame in pixels
+    int frameX = 0;                 ///< X offset in sprite sheet (pixels)
+    int frameY = 0;                 ///< Y offset in sprite sheet (pixels)
+    int frameWidth = 32;            ///< Width of source frame in sprite sheet
+    int frameHeight = 32;           ///< Height of source frame in sprite sheet
+    float scaleX = 1.0f;            ///< X scale factor (1.0 = normal size)
+    float scaleY = 1.0f;            ///< Y scale factor (1.0 = normal size)
+    bool visible = true;            ///< Whether the sprite should be rendered
+    bool flipHorizontal = false;    ///< Flip sprite horizontally
+    bool flipVertical = false;      ///< Flip sprite vertically
+
+    /**
+     * @brief Default constructor - creates empty sprite
+     */
+    SpriteComponent() : texturePath("") {
+        // texturePath is now initialized as empty string
+    }
+
+    /**
+     * @brief Constructor with texture path and size
+     * @param path Path to texture file
+     * @param w Width of sprite
+     * @param h Height of sprite
+     */
+    SpriteComponent(const std::string& path, int w, int h)
+        : Component(), texturePath(path), width(w), height(h), frameWidth(w), frameHeight(h) {
+        // texturePath is now initialized in the initializer list
+    }
+
+    /**
+     * @brief Constructor with texture path, size, and frame position
+     * @param path Path to texture file
+     * @param w Width of sprite
+     * @param h Height of sprite
+     * @param fx Frame X offset in sprite sheet
+     * @param fy Frame Y offset in sprite sheet
+     * @param fw Frame width in sprite sheet
+     * @param fh Frame height in sprite sheet
+     */
+    SpriteComponent(const std::string& path, int w, int h, int fx, int fy, int fw, int fh)
+        : Component(), texturePath(path), width(w), height(h), frameX(fx), frameY(fy), frameWidth(fw), frameHeight(fh) {
+        // texturePath is now initialized in the initializer list
+    }
 };
 
 /**

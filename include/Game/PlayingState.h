@@ -35,4 +35,5 @@ private:
     void CheckGameOver();
     void DrawScrollingBackground();
     void UpdateScore();
+    void UpdatePlayerAnimation();
 };
