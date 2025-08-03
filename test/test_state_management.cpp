@@ -3,6 +3,7 @@
 #include "../include/Game/MenuState.h"
 #include "../include/Game/PlayingState.h"
 #include "../include/Game/GameOverState.h"
+#include "../include/Game/OptionsState.h"
 #include <iostream>
 #include <chrono>
 
@@ -22,6 +23,7 @@ public:
         m_stateManager->AddState(GameStateType::MENU, std::make_unique<MenuState>());
         m_stateManager->AddState(GameStateType::PLAYING, std::make_unique<PlayingState>());
         m_stateManager->AddState(GameStateType::GAME_OVER, std::make_unique<GameOverState>());
+        m_stateManager->AddState(GameStateType::OPTIONS, std::make_unique<OptionsState>());
         
         // Start with menu
         m_stateManager->PushState(GameStateType::MENU);

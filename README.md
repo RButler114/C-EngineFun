@@ -17,6 +17,7 @@ A complete C++ game engine featuring Entity-Component-System architecture, SDL2 
 
 ### Game Features
 - **Animated start menu** with retro arcade styling and sound effects
+- **Comprehensive options menu** with audio, graphics, input, and gameplay settings
 - **Side-scrolling gameplay** with smooth camera following
 - **Parallax background layers** (mountains, buildings, sky)
 - **Player character** with movement and boundaries
@@ -58,29 +59,17 @@ cmake .. && make
 
 ## 📚 Documentation
 
-This project uses **Doxygen** for comprehensive code documentation (C++ equivalent to JSDoc):
-
+### API Documentation
+Generate comprehensive code documentation with Doxygen:
 ```bash
-# Generate HTML documentation
-./generate_docs.sh
-
-# View documentation
-open docs/html/index.html
+./generate_docs.sh && open docs/html/index.html
 ```
+**Live Documentation**: [View on GitHub Pages](https://rbutler114.github.io/C-EngineFun/)
 
-### Documentation Features
-- **Complete API reference** with class hierarchies
-- **Code examples** and usage patterns
-- **Cross-referenced** functions and classes
-- **Search functionality** for quick navigation
-- **Professional HTML output** with diagrams
-- **Auto-deployed** to GitHub Pages: [View Live Documentation](https://rbutler114.github.io/C-EngineFun/)
-
-### CI/CD Integration
-- **Automated builds** on macOS and Ubuntu
-- **Documentation deployment** on every commit to main
-- **Code quality checks** with clang-format and cppcheck
-- **Automated testing** with comprehensive test suite
+### System Documentation
+- **Options System**: See `docs/OPTIONS_SYSTEM.md` for configuration management details
+- **Complete API reference** with class hierarchies and examples
+- **Automated builds** and documentation deployment via GitHub Actions
 
 #### Menu Navigation
 - **Arrow Keys (↑/↓)** or **W/S**: Navigate menu options

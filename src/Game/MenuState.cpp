@@ -163,7 +163,9 @@ void MenuState::SelectOption() {
 
         case MenuOption::OPTIONS:
             std::cout << "Opening options..." << std::endl;
-            // TODO: Change to options state when implemented
+            if (GetStateManager()) {
+                GetStateManager()->ChangeState(GameStateType::OPTIONS);
+            }
             break;
 
         case MenuOption::QUIT:
