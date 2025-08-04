@@ -76,8 +76,9 @@ echo ""
 echo -e "${YELLOW}Recommendation: Choose option 2 for the complete game!${NC}"
 echo ""
 
-# Start the game
-./bin/GameEngine
+# Start the game from the bin directory so assets are found correctly
+cd bin
+./GameEngine
 
 echo ""
 echo -e "${GREEN}🎮 Thanks for playing Arcade Fighter!${NC}"

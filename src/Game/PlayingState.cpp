@@ -16,7 +16,7 @@
 PlayingState::PlayingState()
     : GameState(GameStateType::PLAYING, "Playing")
     , m_gameConfig(std::make_unique<GameConfig>())
-    , m_characterFactory(std::make_unique<CharacterFactory>())
+    , m_characterFactory(nullptr)  // Will be initialized in OnEnter when EntityManager is ready
     , m_cameraX(0.0f)
     , m_score(0)
     , m_gameTime(0.0f)
@@ -28,11 +28,6 @@ PlayingState::PlayingState()
     // Load configuration
     if (!m_gameConfig->LoadConfigs()) {
         std::cerr << "Warning: Failed to load some game configs, using defaults" << std::endl;
-    }
-
-    // Load character templates
-    if (!m_characterFactory->LoadFromConfig("assets/config/characters.ini")) {
-        std::cerr << "Warning: Failed to load character configs, using defaults" << std::endl;
     }
 
     // Set initial player position from config
@@ -51,6 +46,14 @@ void PlayingState::OnEnter() {
     // Add core systems for arcade gameplay
     m_entityManager->AddSystem<MovementSystem>();
     m_entityManager->AddSystem<CollisionSystem>();
+
+    // Initialize CharacterFactory now that EntityManager is ready
+    m_characterFactory = std::make_unique<CharacterFactory>(m_entityManager.get());
+
+    // Load character templates
+    if (!m_characterFactory->LoadFromConfig("assets/config/characters.ini")) {
+        std::cerr << "Warning: Failed to load character configs, using defaults" << std::endl;
+    }
 
     // Add audio system if audio manager is available
     if (GetEngine()->GetAudioManager()) {
@@ -137,11 +140,13 @@ void PlayingState::Render() {
     auto* renderer = GetRenderer();
     if (!renderer) return;
 
+    // Get screen dimensions once for the entire render method
+    int screenWidth = m_gameConfig->GetScreenWidth();
+
     // Draw scrolling background
     DrawScrollingBackground();
 
     // Draw ground that scrolls with camera
-    int screenWidth = m_gameConfig->GetScreenWidth();
     int groundY = m_gameConfig->GetGroundY();
     int groundHeight = m_gameConfig->GetGroundHeight();
     Color groundColor = m_gameConfig->GetGroundColor();
@@ -189,7 +194,6 @@ void PlayingState::Render() {
     }
 
     // Render player sprite with animation
-    int screenWidth = m_gameConfig->GetScreenWidth();
     int spriteWidth = m_gameConfig->GetAnimationSpriteWidth();
     if (playerScreenX > -spriteWidth && playerScreenX < screenWidth + spriteWidth) {
         // Animation logic
@@ -226,14 +230,15 @@ void PlayingState::Render() {
         // Try to render sprite texture first
         int spriteHeight = m_gameConfig->GetAnimationSpriteHeight();
         int totalFrames = m_gameConfig->GetAnimationTotalFrames();
+        float spriteScale = m_gameConfig->GetAnimationSpriteScale();
         SpriteFrame frame = SpriteRenderer::CreateFrame(currentFrame, spriteWidth, spriteHeight, totalFrames);
-        SpriteRenderer::RenderSprite(renderer, "little_adventurer.png",
-                                   playerScreenX, playerScreenY, frame, facingLeft, 1.0f);
+        SpriteRenderer::RenderSprite(renderer, "assets/sprites/player/little_adventurer.png",
+                                   playerScreenX, playerScreenY, frame, facingLeft, spriteScale);
 
         // If texture fails, the SpriteRenderer will show a magenta placeholder
         // For a more detailed fallback, we can add simple shapes here
         static bool textureExists = true;
-        auto texture = renderer->LoadTexture("little_adventurer.png");
+        auto texture = renderer->LoadTexture("assets/sprites/player/little_adventurer.png");
         if (!texture && textureExists) {
             textureExists = false;
             std::cout << "Using simple shape rendering for player" << std::endl;
@@ -742,6 +747,12 @@ void PlayingState::ResetGameState() {
         m_entityManager->AddSystem<MovementSystem>();
         m_entityManager->AddSystem<CollisionSystem>();
 
+        // Reinitialize CharacterFactory
+        m_characterFactory = std::make_unique<CharacterFactory>(m_entityManager.get());
+        if (!m_characterFactory->LoadFromConfig("assets/config/characters.ini")) {
+            std::cerr << "Warning: Failed to reload character configs" << std::endl;
+        }
+
         if (GetEngine()->GetAudioManager()) {
             m_entityManager->AddSystem<AudioSystem>(*GetEngine()->GetAudioManager());
         }
@@ -759,7 +770,7 @@ void PlayingState::CreateConfigAwareCharacter(const std::string& characterType, 
     if (!m_entityManager || !m_characterFactory) return;
 
     // Create character using CharacterFactory
-    Entity character = m_characterFactory->CreateCharacter(*m_entityManager, characterType, x, y);
+    Entity character = m_characterFactory->CreateCharacter(characterType, x, y);
 
     if (!character.IsValid()) {
         std::cout << "⚠️  Failed to create character: " << characterType << std::endl;

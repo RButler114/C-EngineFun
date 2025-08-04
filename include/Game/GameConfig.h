@@ -107,6 +107,7 @@ public:
     int GetAnimationTotalFrames() const;
     int GetAnimationSpriteWidth() const;
     int GetAnimationSpriteHeight() const;
+    float GetAnimationSpriteScale() const;
     float GetApproximateFrameTime() const;
 
     // Audio settings

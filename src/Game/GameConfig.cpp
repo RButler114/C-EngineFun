@@ -188,6 +188,10 @@ int GameConfig::GetAnimationSpriteHeight() const {
     return m_gameplayConfig->Get("animation", "sprite_height", 48).AsInt();
 }
 
+float GameConfig::GetAnimationSpriteScale() const {
+    return m_gameplayConfig->Get("animation", "sprite_scale", 1.0f).AsFloat();
+}
+
 float GameConfig::GetApproximateFrameTime() const {
     return m_gameplayConfig->Get("animation", "approximate_frame_time", 0.016f).AsFloat();
 }

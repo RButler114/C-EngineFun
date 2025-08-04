@@ -11,6 +11,7 @@
 #include <string>
 #include <cstring>
 #include <iostream>
+#include <vector>
 
 /**
  * @struct Component
@@ -299,6 +300,154 @@ struct AudioComponent : public Component {
      */
     AudioComponent(const std::string& sound, float vol, bool loop, bool onCreate = false, bool onCollision = false)
         : Component(), soundName(sound), volume(vol), looping(loop), playOnCreate(onCreate), playOnCollision(onCollision) {}
+};
+
+/**
+ * @struct HealthComponent
+ * @brief Component that defines an entity's health and defensive properties
+ */
+struct HealthComponent : public Component {
+    float maxHealth = 100.0f;      ///< Maximum health points
+    float currentHealth = 100.0f;  ///< Current health points
+    float armor = 0.0f;             ///< Damage reduction (0.0 - 1.0)
+    float healthRegen = 0.0f;       ///< Health regeneration per second
+    bool isDead = false;            ///< Whether the entity is dead
+
+    HealthComponent() = default;
+    HealthComponent(float maxHp, float armorVal = 0.0f, float regen = 0.0f)
+        : Component(), maxHealth(maxHp), currentHealth(maxHp), armor(armorVal), healthRegen(regen) {}
+};
+
+/**
+ * @struct CharacterTypeComponent
+ * @brief Component that defines what type of character an entity is
+ */
+struct CharacterTypeComponent : public Component {
+    enum class CharacterType {
+        PLAYER,
+        ENEMY,
+        NPC,
+        BOSS,
+        NEUTRAL
+    };
+
+    enum class CharacterClass {
+        WARRIOR,
+        ARCHER,
+        MAGE,
+        ROGUE,
+        TANK,
+        SUPPORT,
+        BEAST,
+        MONSTER
+    };
+
+    CharacterType type = CharacterType::NEUTRAL;
+    CharacterClass characterClass = CharacterClass::MONSTER;
+    std::string name = "Unknown";
+
+    CharacterTypeComponent() = default;
+    CharacterTypeComponent(CharacterType t, CharacterClass c, const std::string& n = "Unknown")
+        : Component(), type(t), characterClass(c), name(n) {}
+};
+
+/**
+ * @struct CharacterStatsComponent
+ * @brief Component that defines character attributes and stats
+ */
+struct CharacterStatsComponent : public Component {
+    float strength = 10.0f;      ///< Physical damage and carrying capacity
+    float agility = 10.0f;       ///< Speed and dodge chance
+    float intelligence = 10.0f;  ///< Mana and spell effectiveness
+    float vitality = 10.0f;      ///< Health and stamina
+    float mana = 100.0f;         ///< Current mana points
+    float maxMana = 100.0f;      ///< Maximum mana points
+    float stamina = 100.0f;      ///< Current stamina points
+    float maxStamina = 100.0f;   ///< Maximum stamina points
+
+    CharacterStatsComponent() = default;
+
+    /**
+     * @brief Recalculate derived stats based on base attributes
+     */
+    void RecalculateStats() {
+        // Recalculate max health based on vitality
+        maxMana = 50.0f + intelligence * 5.0f;
+        maxStamina = 50.0f + vitality * 5.0f;
+
+        // Ensure current values don't exceed maximums
+        if (mana > maxMana) mana = maxMana;
+        if (stamina > maxStamina) stamina = maxStamina;
+    }
+};
+
+/**
+ * @struct AIComponent
+ * @brief Component that defines AI behavior for entities
+ */
+struct AIComponent : public Component {
+    enum class AIState {
+        IDLE,
+        PATROL,
+        CHASE,
+        ATTACK,
+        FLEE,
+        DEAD
+    };
+
+    AIState currentState = AIState::IDLE;
+    float detectionRange = 150.0f;   ///< Range to detect targets
+    float attackRange = 50.0f;       ///< Range to attack targets
+    float patrolSpeed = 50.0f;       ///< Speed when patrolling
+    float chaseSpeed = 100.0f;       ///< Speed when chasing
+    bool aggressive = true;          ///< Whether to attack on sight
+    bool canFlee = false;            ///< Whether can flee when low health
+    Entity target;                   ///< Current target entity
+
+    AIComponent() = default;
+};
+
+/**
+ * @struct AbilityComponent
+ * @brief Component that defines special abilities for entities
+ */
+struct AbilityComponent : public Component {
+    struct Ability {
+        std::string name;
+        float cooldown = 0.0f;       ///< Cooldown time in seconds
+        float currentCooldown = 0.0f; ///< Current cooldown remaining
+        float manaCost = 0.0f;       ///< Mana cost to use ability
+        float staminaCost = 0.0f;    ///< Stamina cost to use ability
+        float damage = 0.0f;         ///< Damage dealt by ability
+        float range = 0.0f;          ///< Range of ability
+        bool isActive = false;       ///< Whether ability is currently active
+    };
+
+    std::vector<Ability> abilities;
+
+    AbilityComponent() = default;
+
+    /**
+     * @brief Add a new ability to this component
+     */
+    void AddAbility(const Ability& ability) {
+        abilities.push_back(ability);
+    }
+
+    /**
+     * @brief Add a new ability with parameters
+     */
+    void AddAbility(const std::string& name, float cooldown, float manaCost = 0.0f,
+                   float staminaCost = 0.0f, float damage = 0.0f, float range = 0.0f) {
+        Ability ability;
+        ability.name = name;
+        ability.cooldown = cooldown;
+        ability.manaCost = manaCost;
+        ability.staminaCost = staminaCost;
+        ability.damage = damage;
+        ability.range = range;
+        abilities.push_back(ability);
+    }
 };
 
 /** @} */ // end of Components group

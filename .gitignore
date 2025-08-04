@@ -205,3 +205,5 @@ docs/rtf/
 # Custom build artifacts (add your specific files here)
 # assets/generated/
 # config/local_config.json
+
+.augment/
