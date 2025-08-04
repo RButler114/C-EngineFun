@@ -1,6 +1,6 @@
 /**
  * @file ECS.h
- * @brief Convenience header that includes all Entity-Component-System headers
+ * @brief Streamlined ECS header for arcade game engine
  * @author Ryan Butler
  * @date 2025
  */
@@ -8,23 +8,10 @@
 #pragma once
 
 /**
- * @defgroup ECS Entity-Component-System
- * @brief Complete Entity-Component-System architecture implementation
+ * @brief Streamlined Entity-Component-System for arcade games
  *
- * The ECS (Entity-Component-System) architecture is a design pattern commonly used
- * in game development that separates data (Components) from behavior (Systems) and
- * uses lightweight identifiers (Entities) to associate them.
- *
- * Key concepts:
- * - **Entities**: Unique identifiers that represent game objects
- * - **Components**: Data containers that define what an entity has
- * - **Systems**: Logic processors that define what entities do
- *
- * This implementation provides:
- * - Type-safe component management
- * - Efficient system processing
- * - Flexible entity querying
- * - Memory-efficient storage
+ * Focused ECS implementation for classic arcade-style scrolling games.
+ * Includes only essential systems needed for arcade gameplay.
  *
  * @example
  * ```cpp
@@ -33,9 +20,10 @@
  * // Create entity manager
  * EntityManager entityManager;
  *
- * // Add systems
+ * // Add core systems
  * entityManager.AddSystem<MovementSystem>();
- * entityManager.AddSystem<RenderSystem>(renderer);
+ * entityManager.AddSystem<CollisionSystem>();
+ * entityManager.AddSystem<AudioSystem>(audioManager);
  *
  * // Create entity with components
  * Entity player = entityManager.CreateEntity();
@@ -47,14 +35,16 @@
  * ```
  */
 
-// Include all ECS headers for convenience
+// Core ECS components
 #include "Entity.h"
 #include "Component.h"
 #include "System.h"
 #include "EntityManager.h"
+
+// Essential systems for arcade games
 #include "MovementSystem.h"
-#include "RenderSystem.h"
 #include "CollisionSystem.h"
 #include "AudioSystem.h"
+
+// Animation support
 #include "AnimationComponent.h"
-#include "AnimationSystem.h"

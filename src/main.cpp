@@ -1,21 +1,18 @@
 /**
  * @file main.cpp
- * @brief Main entry point for the C++ Game Engine with arcade fighter demo
+ * @brief Main entry point for the C++ Arcade Game Engine
  * @author Ryan Butler
  * @date 2025
  *
- * This file contains the main application entry point and demonstrates
- * the complete game engine in action with two different demos:
- * 1. Simple rendering test - Basic engine validation
- * 2. Arcade fighter game - Full-featured game with ECS, state management, and gameplay
- *
- * The arcade fighter demonstrates:
- * - Professional game state management (Menu, Playing, Game Over)
+ * Streamlined arcade game engine focused on classic side-scrolling gameplay.
+ * Features:
+ * - Game state management (Menu, Playing, Game Over, Options)
  * - Entity-Component-System architecture
- * - Real-time rendering with parallax backgrounds
+ * - Sprite rendering and animation
+ * - Audio system integration
  * - Input handling and player controls
- * - Collision detection and game mechanics
- * - Scoring system and timed gameplay
+ * - Collision detection
+ * - Scrolling backgrounds
  */
 
 #include "Engine/Engine.h"
@@ -32,27 +29,23 @@
 #include <chrono>
 
 /**
- * @class ArcadeFighterGame
- * @brief Complete arcade fighter game implementation using the engine
+ * @class ArcadeGame
+ * @brief Streamlined arcade game implementation
  *
- * This class demonstrates a full-featured game built on the engine framework,
- * showcasing professional game development patterns including state management,
- * ECS architecture, and comprehensive gameplay systems.
- *
- * Game Features:
- * - Animated menu system with retro styling
- * - Side-scrolling gameplay with parallax backgrounds
- * - Player character with movement and boundaries
- * - Multiple enemy types with AI patterns
- * - 30-second timed gameplay with scoring
- * - Game over screen with restart functionality
+ * Classic arcade-style side-scrolling game with:
+ * - Menu system
+ * - Side-scrolling gameplay
+ * - Player movement and sprite animation
+ * - Enemy spawning and collision
+ * - Scoring system
+ * - Game over handling
  */
-class ArcadeFighterGame : public Engine {
+class ArcadeGame : public Engine {
 public:
     /**
      * @brief Constructor - initializes game state manager
      */
-    ArcadeFighterGame() : m_stateManager(nullptr) {}
+    ArcadeGame() : m_stateManager(nullptr) {}
 
     bool Initialize(const char* title, int width, int height) {
         if (!Engine::Initialize(title, width, height)) {
@@ -85,7 +78,7 @@ protected:
         static float titleUpdateTimer = 0.0f;
         titleUpdateTimer += deltaTime;
         if (titleUpdateTimer >= 1.0f) {
-            std::string title = "Arcade Fighter - FPS: " + std::to_string((int)GetFPS());
+            std::string title = "Arcade Game - FPS: " + std::to_string((int)GetFPS());
             GetWindow()->SetTitle(title.c_str());
             titleUpdateTimer = 0.0f;
         }
@@ -101,113 +94,28 @@ private:
     std::unique_ptr<GameStateManager> m_stateManager;
 };
 
-class SimpleTestGame : public Engine {
-public:
-    SimpleTestGame() : m_rectX(100), m_rectY(100) {}
 
-protected:
-    void Update(float deltaTime) override {
-        auto* input = GetInputManager();
-
-        // Move rectangle with arrow keys
-        const float speed = 200.0f;
-        if (input->IsKeyPressed(SDL_SCANCODE_LEFT) || input->IsKeyPressed(SDL_SCANCODE_A)) {
-            m_rectX -= speed * deltaTime;
-        }
-        if (input->IsKeyPressed(SDL_SCANCODE_RIGHT) || input->IsKeyPressed(SDL_SCANCODE_D)) {
-            m_rectX += speed * deltaTime;
-        }
-        if (input->IsKeyPressed(SDL_SCANCODE_UP) || input->IsKeyPressed(SDL_SCANCODE_W)) {
-            m_rectY -= speed * deltaTime;
-        }
-        if (input->IsKeyPressed(SDL_SCANCODE_DOWN) || input->IsKeyPressed(SDL_SCANCODE_S)) {
-            m_rectY += speed * deltaTime;
-        }
-
-        // Keep within bounds
-        if (m_rectX < 0) m_rectX = 0;
-        if (m_rectY < 0) m_rectY = 0;
-        if (m_rectX > 750) m_rectX = 750;
-        if (m_rectY > 550) m_rectY = 550;
-
-        // Update window title with FPS
-        static float titleUpdateTimer = 0.0f;
-        titleUpdateTimer += deltaTime;
-        if (titleUpdateTimer >= 1.0f) {
-            std::string title = "Simple Test - FPS: " + std::to_string((int)GetFPS()) +
-                               " Pos: (" + std::to_string((int)m_rectX) + "," + std::to_string((int)m_rectY) + ")";
-            GetWindow()->SetTitle(title.c_str());
-            titleUpdateTimer = 0.0f;
-        }
-    }
-
-    void Render() override {
-        auto* renderer = GetRenderer();
-
-        // Draw a green player rectangle
-        Rectangle playerRect(static_cast<int>(m_rectX), static_cast<int>(m_rectY), 50, 50);
-        renderer->DrawRectangle(playerRect, Color(0, 255, 0, 255), true);
-
-        // Draw some static test shapes
-        renderer->DrawRectangle(Rectangle(10, 10, 100, 30), Color(255, 0, 0, 255), true);
-        renderer->DrawRectangle(Rectangle(200, 200, 80, 80), Color(0, 0, 255, 255), false);
-        renderer->DrawLine(0, 0, 800, 600, Color(255, 255, 0, 255));
-        renderer->DrawLine(800, 0, 0, 600, Color(255, 0, 255, 255));
-
-        // Draw walls
-        renderer->DrawRectangle(Rectangle(0, 0, 800, 10), Color(128, 128, 128, 255), true);
-        renderer->DrawRectangle(Rectangle(0, 590, 800, 10), Color(128, 128, 128, 255), true);
-        renderer->DrawRectangle(Rectangle(0, 0, 10, 600), Color(128, 128, 128, 255), true);
-        renderer->DrawRectangle(Rectangle(790, 0, 10, 600), Color(128, 128, 128, 255), true);
-    }
-
-private:
-    float m_rectX, m_rectY;
-};
 
 int main() {
-    std::cout << "🎮 ARCADE FIGHTER GAME 🎮" << std::endl;
-    std::cout << "Choose demo:" << std::endl;
-    std::cout << "1. Simple Test (basic rendering)" << std::endl;
-    std::cout << "2. Arcade Fighter (full game with menu)" << std::endl;
-    std::cout << "Enter choice (1 or 2): ";
+    std::cout << "🎮 ARCADE GAME ENGINE 🎮" << std::endl;
 
-    int choice;
-    std::cin >> choice;
+    ArcadeGame game;
 
-    if (choice == 1) {
-        SimpleTestGame game;
-
-        if (!game.Initialize("Simple Rendering Test", 800, 600)) {
-            std::cerr << "Failed to initialize game!" << std::endl;
-            return -1;
-        }
-
-        std::cout << "\nSimple Rendering Test" << std::endl;
-        std::cout << "Controls:" << std::endl;
-        std::cout << "  Arrow keys or WASD: Move green rectangle" << std::endl;
-        std::cout << "  Escape: Quit" << std::endl;
-
-        game.Run();
-    } else {
-        ArcadeFighterGame game;
-
-        if (!game.Initialize("🥊 ARCADE FIGHTER 🥊", 800, 600)) {
-            std::cerr << "Failed to initialize game!" << std::endl;
-            return -1;
-        }
-
-        std::cout << "\n🥊 ARCADE FIGHTER GAME 🥊" << std::endl;
-        std::cout << "Features:" << std::endl;
-        std::cout << "  ✅ Start Menu with navigation" << std::endl;
-        std::cout << "  ✅ Game state management" << std::endl;
-        std::cout << "  ✅ Side-scrolling gameplay" << std::endl;
-        std::cout << "  ✅ Player movement and camera" << std::endl;
-        std::cout << "  ✅ Game Over screen" << std::endl;
-        std::cout << "  🔄 More features coming..." << std::endl;
-
-        game.Run();
+    if (!game.Initialize("🎮 Arcade Game 🎮", 800, 600)) {
+        std::cerr << "Failed to initialize game!" << std::endl;
+        return -1;
     }
+
+    std::cout << "\n🎮 ARCADE GAME 🎮" << std::endl;
+    std::cout << "Features:" << std::endl;
+    std::cout << "  ✅ Menu system with navigation" << std::endl;
+    std::cout << "  ✅ Game state management" << std::endl;
+    std::cout << "  ✅ Side-scrolling gameplay" << std::endl;
+    std::cout << "  ✅ Sprite animation" << std::endl;
+    std::cout << "  ✅ Audio system" << std::endl;
+    std::cout << "  ✅ Collision detection" << std::endl;
+
+    game.Run();
 
     return 0;
 }
