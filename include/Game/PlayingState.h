@@ -2,6 +2,8 @@
 
 #include "GameState.h"
 #include "ECS/EntityManager.h"
+#include "Game/GameConfig.h"
+#include "Game/CharacterFactory.h"
 #include <memory>
 
 class PlayingState : public GameState {
@@ -17,6 +19,8 @@ public:
 
 private:
     std::unique_ptr<EntityManager> m_entityManager;
+    std::unique_ptr<GameConfig> m_gameConfig;
+    std::unique_ptr<CharacterFactory> m_characterFactory;
     Entity m_player;
     float m_cameraX;
     int m_score;
@@ -36,4 +40,6 @@ private:
     void DrawScrollingBackground();
     void UpdateScore();
     void UpdatePlayerAnimation();
+    void ResetGameState();
+    void CreateConfigAwareCharacter(const std::string& characterType, float x, float y, float difficultyMultiplier = 1.0f);
 };
