@@ -2,6 +2,7 @@
 
 #include "GameState.h"
 #include "ECS/EntityManager.h"
+#include "ECS/CollisionSystem.h"
 #include "Game/GameConfig.h"
 #include "Game/CharacterFactory.h"
 #include "Game/PlayerCustomization.h"
@@ -32,6 +33,10 @@ private:
     float m_playerY;
     float m_playerVelX;
     float m_playerVelY;
+
+    // Collision cooldown to prevent immediate re-triggering
+    float m_collisionCooldown;
+    static constexpr float COLLISION_COOLDOWN_TIME = 1.0f; // 1 second cooldown
     
     void CreatePlayer();
     void CreateEnemies();
@@ -43,4 +48,8 @@ private:
     void UpdatePlayerAnimation();
     void ResetGameState();
     void CreateConfigAwareCharacter(const std::string& characterType, float x, float y, float difficultyMultiplier = 1.0f);
+
+    // Combat integration
+    void OnCollision(const CollisionInfo& info);
+    void TriggerCombat(Entity player, Entity enemy);
 };

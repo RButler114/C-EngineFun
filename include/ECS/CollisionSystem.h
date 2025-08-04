@@ -71,18 +71,7 @@ public:
      *
      * @note Uses O(n²) algorithm - consider spatial partitioning for large numbers of entities
      */
-    void Update(float deltaTime) override {
-        (void)deltaTime; // Not needed for collision detection
-
-        auto entities = m_entityManager->GetEntitiesWith<TransformComponent, CollisionComponent>();
-
-        // Check all pairs of entities for collision
-        for (size_t i = 0; i < entities.size(); ++i) {
-            for (size_t j = i + 1; j < entities.size(); ++j) {
-                CheckCollision(entities[i], entities[j]);
-            }
-        }
-    }
+    void Update(float deltaTime) override;
 
     /**
      * @brief Set callback function for collision events

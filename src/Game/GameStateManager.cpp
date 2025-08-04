@@ -22,14 +22,9 @@ void GameStateManager::AddState(GameStateType type, std::unique_ptr<GameState> s
 void GameStateManager::PushState(GameStateType type) {
     auto it = m_states.find(type);
     if (it != m_states.end()) {
-        // Exit current state if exists
-        if (!m_stateStack.empty()) {
-            auto currentIt = m_states.find(m_stateStack.top());
-            if (currentIt != m_states.end()) {
-                currentIt->second->OnExit();
-            }
-        }
-        
+        // Don't exit current state when pushing - just pause it
+        // This allows the underlying state (like PlayingState) to keep its entities alive
+
         m_stateStack.push(type);
         it->second->OnEnter();
         std::cout << "Pushed state: " << it->second->GetName() << std::endl;
@@ -40,16 +35,18 @@ void GameStateManager::PopState() {
     if (!m_stateStack.empty()) {
         auto currentIt = m_states.find(m_stateStack.top());
         if (currentIt != m_states.end()) {
+            std::cout << "Popping state: " << currentIt->second->GetName() << std::endl;
             currentIt->second->OnExit();
         }
-        
+
         m_stateStack.pop();
-        
-        // Enter the new current state
+
+        // Don't call OnEnter() on the resumed state - it should just continue
+        // The underlying state was paused, not exited, so it should resume naturally
         if (!m_stateStack.empty()) {
             auto newCurrentIt = m_states.find(m_stateStack.top());
             if (newCurrentIt != m_states.end()) {
-                newCurrentIt->second->OnEnter();
+                std::cout << "Resumed state: " << newCurrentIt->second->GetName() << std::endl;
             }
         }
     }

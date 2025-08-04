@@ -126,6 +126,41 @@ public:
     int GetGroundDetailSpacing() const;
     int GetGroundDetailOffset() const;
 
+    // Combat settings
+    float GetBaseAttackDamage() const;
+    float GetBaseDefense() const;
+    float GetBaseMagicPower() const;
+    float GetBaseSpeed() const;
+    float GetCriticalChance() const;
+    float GetCriticalMultiplier() const;
+    float GetFleeSuccessRate() const;
+
+    // Combat timing
+    float GetTurnStartDelay() const;
+    float GetActionExecuteDelay() const;
+    float GetTurnEndDelay() const;
+    float GetBattleStartDelay() const;
+    float GetBattleEndDelay() const;
+
+    // Combat rewards
+    int GetBaseExperience() const;
+    int GetBaseGold() const;
+    int GetExperiencePerEnemyLevel() const;
+    int GetGoldPerEnemyLevel() const;
+
+    // Combat balance
+    float GetPlayerHealthMultiplier() const;
+    float GetEnemyHealthMultiplier() const;
+    float GetDamageVariance() const;
+    float GetAccuracyBase() const;
+
+    // Combat audio
+    float GetCombatMusicVolume() const;
+    float GetAttackSoundVolume() const;
+    float GetMagicSoundVolume() const;
+    float GetVictorySoundVolume() const;
+    float GetDefeatSoundVolume() const;
+
     // HUD settings
     int GetHudHeight() const;
     int GetHudBorderHeight() const;

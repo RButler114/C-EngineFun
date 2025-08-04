@@ -1,4 +1,5 @@
 #include "Game/PlayingState.h"
+#include "Game/CombatState.h"
 #include "Game/GameStateManager.h"
 #include "Game/GameOverState.h"
 #include "Engine/Renderer.h"
@@ -33,6 +34,9 @@ PlayingState::PlayingState()
     // Set initial player position from config
     m_playerX = m_gameConfig->GetPlayerStartX();
     m_playerY = m_gameConfig->GetPlayerStartY();
+
+    // Initialize collision cooldown
+    m_collisionCooldown = 0.0f;
 }
 
 PlayingState::~PlayingState() = default;
@@ -45,7 +49,12 @@ void PlayingState::OnEnter() {
 
     // Add core systems for arcade gameplay
     m_entityManager->AddSystem<MovementSystem>();
-    m_entityManager->AddSystem<CollisionSystem>();
+    auto* collisionSystem = m_entityManager->AddSystem<CollisionSystem>();
+
+    // Set up collision callback for combat triggering
+    collisionSystem->SetCollisionCallback([this](const CollisionInfo& info) {
+        OnCollision(info);
+    });
 
     // Initialize CharacterFactory now that EntityManager is ready
     m_characterFactory = std::make_unique<CharacterFactory>(m_entityManager.get());
@@ -71,7 +80,26 @@ void PlayingState::OnEnter() {
     // Create game entities
     CreatePlayer();
     CreateEnemies();
-    
+
+    // Debug: Test collision detection setup
+    std::cout << "=== COLLISION DETECTION TEST ===" << std::endl;
+    auto entities = m_entityManager->GetEntitiesWith<TransformComponent, CollisionComponent>();
+    std::cout << "Found " << entities.size() << " entities with collision components:" << std::endl;
+
+    for (Entity entity : entities) {
+        auto* transform = m_entityManager->GetComponent<TransformComponent>(entity);
+        auto* collision = m_entityManager->GetComponent<CollisionComponent>(entity);
+        auto* charType = m_entityManager->GetComponent<CharacterTypeComponent>(entity);
+
+        std::cout << "  Entity " << entity.GetID() << ": pos(" << transform->x << ", " << transform->y
+                  << ") size(" << collision->width << "x" << collision->height << ")";
+        if (charType) {
+            std::cout << " type=" << static_cast<int>(charType->type);
+        }
+        std::cout << std::endl;
+    }
+    std::cout << "=================================" << std::endl;
+
     // Reset game state
     m_cameraX = 0.0f;
     m_score = 0;
@@ -85,6 +113,11 @@ void PlayingState::OnExit() {
 
 void PlayingState::Update(float deltaTime) {
     m_gameTime += deltaTime;
+
+    // Update collision cooldown
+    if (m_collisionCooldown > 0.0f) {
+        m_collisionCooldown -= deltaTime;
+    }
 
     // Update ECS
     if (m_entityManager) {
@@ -108,6 +141,15 @@ void PlayingState::Update(float deltaTime) {
     }
     if (m_playerY > m_gameConfig->GetPlayerGroundLimit()) {
         m_playerY = m_gameConfig->GetPlayerGroundLimit(); // Ground limit
+    }
+
+    // Sync player position with ECS TransformComponent for collision detection
+    if (m_player.IsValid() && m_entityManager) {
+        auto* transform = m_entityManager->GetComponent<TransformComponent>(m_player);
+        if (transform) {
+            transform->x = m_playerX;
+            transform->y = m_playerY;
+        }
     }
 
     UpdateCamera();
@@ -470,8 +512,32 @@ void PlayingState::CreatePlayer() {
 
     std::cout << "Created player entity with ID: " << m_player.GetID() << std::endl;
 
+    // Add transform component for ECS systems (required for collision detection)
+    auto* transform = m_entityManager->AddComponent<TransformComponent>(m_player, m_playerX, m_playerY);
+    std::cout << "DEBUG: Player TransformComponent added at (" << transform->x << ", " << transform->y << ")" << std::endl;
+
     // Add audio component for jump sound
     auto* audio = m_entityManager->AddComponent<AudioComponent>(m_player, "jump", m_gameConfig->GetJumpSoundVolume(), false, false, false);
+
+    // Add collision component for combat triggering
+    auto* collision = m_entityManager->AddComponent<CollisionComponent>(m_player, 32.0f, 48.0f);
+
+    // Add character type component to identify as player
+    auto* charType = m_entityManager->AddComponent<CharacterTypeComponent>(m_player,
+        CharacterTypeComponent::CharacterType::PLAYER,
+        CharacterTypeComponent::CharacterClass::WARRIOR,
+        "Player");
+
+    std::cout << "DEBUG: Added CharacterTypeComponent to player - type: " << static_cast<int>(charType->type) << std::endl;
+
+    // Add health component
+    auto* health = m_entityManager->AddComponent<HealthComponent>(m_player, 100.0f);
+
+    // Add combat stats component
+    auto* combatStats = m_entityManager->AddComponent<CombatStatsComponent>(m_player);
+    combatStats->attackPower = m_gameConfig->GetBaseAttackDamage();
+    combatStats->defense = m_gameConfig->GetBaseDefense();
+    combatStats->speed = m_gameConfig->GetBaseSpeed();
 
     // Using direct sprite rendering for better control in arcade games
     // This approach gives us precise control over animation and rendering
@@ -497,12 +563,21 @@ void PlayingState::CreateEnemies() {
         float x = spawnStartX + i * spawnSpacingX; // Spread enemies across a wider area
         float y = m_gameConfig->GetPlayerStartY() + (i % 2) * spawnHeightVariation; // Vary height slightly
 
+        // Ensure enemies spawn at safe distance from player
+        float minDistanceFromPlayer = 150.0f; // Minimum safe distance
+        if (x < m_gameConfig->GetPlayerStartX() + minDistanceFromPlayer) {
+            x = m_gameConfig->GetPlayerStartX() + minDistanceFromPlayer + i * 50.0f;
+            std::cout << "DEBUG: Adjusted enemy " << i << " position to safe distance at (" << x << ", " << y << ")" << std::endl;
+        }
+
         // Vary enemy movement patterns
         float velocityX = baseVelocityX - (i % 3) * velocityVariation; // Different speeds
         float velocityY = (i % 2 == 0) ? 0.0f : (i % 4 - 2) * verticalMovementRange; // Some vertical movement
 
         auto* transform = m_entityManager->AddComponent<TransformComponent>(enemy, x, y);
         auto* velocity = m_entityManager->AddComponent<VelocityComponent>(enemy, velocityX, velocityY);
+
+        std::cout << "DEBUG: Enemy " << i << " TransformComponent added at (" << transform->x << ", " << transform->y << ")" << std::endl;
 
         // Vary enemy colors using config
         int colorVariant = i % 3;
@@ -518,6 +593,27 @@ void PlayingState::CreateEnemies() {
         auto* render = m_entityManager->AddComponent<RenderComponent>(enemy, enemyWidth, enemyHeight,
                                                      enemyColor.r, enemyColor.g, enemyColor.b);
         auto* audio = m_entityManager->AddComponent<AudioComponent>(enemy, "collision", m_gameConfig->GetCollisionSoundVolume(), false, false, true); // Collision sound
+
+        // Add collision component for combat triggering
+        auto* collision = m_entityManager->AddComponent<CollisionComponent>(enemy,
+            static_cast<float>(enemyWidth), static_cast<float>(enemyHeight));
+
+        // Add character type component to identify as enemy
+        auto* charType = m_entityManager->AddComponent<CharacterTypeComponent>(enemy,
+            CharacterTypeComponent::CharacterType::ENEMY,
+            CharacterTypeComponent::CharacterClass::MONSTER,
+            "Enemy");
+
+        std::cout << "DEBUG: Added CharacterTypeComponent to enemy " << i << " - type: " << static_cast<int>(charType->type) << std::endl;
+
+        // Add health component
+        auto* health = m_entityManager->AddComponent<HealthComponent>(enemy, 50.0f);
+
+        // Add combat stats component
+        auto* combatStats = m_entityManager->AddComponent<CombatStatsComponent>(enemy);
+        combatStats->attackPower = m_gameConfig->GetBaseAttackDamage() * 0.8f; // Slightly weaker
+        combatStats->defense = m_gameConfig->GetBaseDefense() * 0.5f;
+        combatStats->speed = m_gameConfig->GetBaseSpeed() * 0.9f;
 
         std::cout << "Created enemy " << i << " with ID: " << enemy.GetID() << std::endl;
         std::cout << "  Transform: " << (transform ? "OK" : "FAILED") << " pos(" << (transform ? transform->x : 0) << "," << (transform ? transform->y : 0) << ")" << std::endl;
@@ -758,7 +854,12 @@ void PlayingState::ResetGameState() {
 
         // Re-add systems
         m_entityManager->AddSystem<MovementSystem>();
-        m_entityManager->AddSystem<CollisionSystem>();
+        auto* collisionSystem = m_entityManager->AddSystem<CollisionSystem>();
+
+        // Re-set collision callback
+        collisionSystem->SetCollisionCallback([this](const CollisionInfo& info) {
+            OnCollision(info);
+        });
 
         // Reinitialize CharacterFactory
         m_characterFactory = std::make_unique<CharacterFactory>(m_entityManager.get());
@@ -825,4 +926,79 @@ void PlayingState::CreateConfigAwareCharacter(const std::string& characterType, 
     }
 
     std::cout << "✅ Created config-aware " << characterType << " at (" << x << ", " << y << ") with difficulty " << difficultyMultiplier << std::endl;
+}
+
+void PlayingState::OnCollision(const CollisionInfo& info) {
+    std::cout << "Collision detected between entities " << info.entityA.GetID() << " and " << info.entityB.GetID() << std::endl;
+
+    // Check collision cooldown to prevent immediate re-triggering
+    if (m_collisionCooldown > 0.0f) {
+        std::cout << "Collision ignored - cooldown active (" << m_collisionCooldown << "s remaining)" << std::endl;
+        return;
+    }
+
+    // TEMPORARY FIX: Use entity IDs instead of corrupted CharacterTypeComponent
+    // Entity 1 is always the player, entities 2-9 are enemies
+    Entity player, enemy;
+    bool isPlayerEnemyCollision = false;
+
+    if (info.entityA.GetID() == 1 && info.entityB.GetID() >= 2 && info.entityB.GetID() <= 9) {
+        // Entity A is player, Entity B is enemy
+        player = info.entityA;
+        enemy = info.entityB;
+        isPlayerEnemyCollision = true;
+        std::cout << "Player-Enemy collision detected (A=Player, B=Enemy)" << std::endl;
+    } else if (info.entityB.GetID() == 1 && info.entityA.GetID() >= 2 && info.entityA.GetID() <= 9) {
+        // Entity B is player, Entity A is enemy
+        player = info.entityB;
+        enemy = info.entityA;
+        isPlayerEnemyCollision = true;
+        std::cout << "Player-Enemy collision detected (A=Enemy, B=Player)" << std::endl;
+    } else {
+        std::cout << "Not a player-enemy collision (IDs: " << info.entityA.GetID() << ", " << info.entityB.GetID() << ")" << std::endl;
+    }
+
+    if (isPlayerEnemyCollision) {
+        std::cout << "🎯 COMBAT TRIGGERED! Player vs Enemy " << enemy.GetID() << std::endl;
+
+        // Set collision cooldown to prevent immediate re-triggering
+        m_collisionCooldown = COLLISION_COOLDOWN_TIME;
+
+        // Play collision sound
+        if (GetEngine()->GetAudioManager()) {
+            GetEngine()->GetAudioManager()->PlaySound("collision", m_gameConfig->GetCollisionSoundVolume());
+        }
+
+        // Trigger combat
+        TriggerCombat(player, enemy);
+    }
+}
+
+void PlayingState::TriggerCombat(Entity player, Entity enemy) {
+    // Store current player position for return after combat
+    float returnX = m_playerX;
+    float returnY = m_playerY;
+
+    // Get the combat state
+    auto* stateManager = GetStateManager();
+    if (!stateManager) {
+        std::cerr << "Error: No state manager available for combat transition" << std::endl;
+        return;
+    }
+
+    std::cout << "Entering combat state..." << std::endl;
+
+    // Push combat state
+    stateManager->PushState(GameStateType::COMBAT);
+
+    // Get the combat state and initialize it with the actual entities
+    auto* combatState = dynamic_cast<CombatState*>(stateManager->GetCurrentState());
+    if (combatState) {
+        std::vector<Entity> enemies = {enemy};
+        combatState->InitializeCombat(player, enemies);
+        combatState->SetReturnPosition(returnX, returnY);
+        std::cout << "Combat initialized with player " << player.GetID() << " vs enemy " << enemy.GetID() << std::endl;
+    } else {
+        std::cerr << "Error: Could not get CombatState after pushing" << std::endl;
+    }
 }

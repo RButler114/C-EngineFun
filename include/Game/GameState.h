@@ -12,6 +12,7 @@ enum class GameStateType {
     MENU,
     CUSTOMIZATION,
     PLAYING,
+    COMBAT,
     PAUSED,
     GAME_OVER,
     OPTIONS

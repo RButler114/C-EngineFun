@@ -246,6 +246,111 @@ int GameConfig::GetGroundDetailOffset() const {
     return m_gameplayConfig->Get("visual", "ground_detail_offset", 20).AsInt();
 }
 
+// Combat settings
+float GameConfig::GetBaseAttackDamage() const {
+    return GetConfigValueFloat("combat", "base_attack_damage", 15.0f);
+}
+
+float GameConfig::GetBaseDefense() const {
+    return GetConfigValueFloat("combat", "base_defense", 5.0f);
+}
+
+float GameConfig::GetBaseMagicPower() const {
+    return GetConfigValueFloat("combat", "base_magic_power", 10.0f);
+}
+
+float GameConfig::GetBaseSpeed() const {
+    return GetConfigValueFloat("combat", "base_speed", 100.0f);
+}
+
+float GameConfig::GetCriticalChance() const {
+    return GetConfigValueFloat("combat", "critical_chance", 5.0f);
+}
+
+float GameConfig::GetCriticalMultiplier() const {
+    return GetConfigValueFloat("combat", "critical_multiplier", 2.0f);
+}
+
+float GameConfig::GetFleeSuccessRate() const {
+    return GetConfigValueFloat("combat", "flee_success_rate", 75.0f);
+}
+
+// Combat timing
+float GameConfig::GetTurnStartDelay() const {
+    return GetConfigValueFloat("combat", "turn_start_delay", 1.0f);
+}
+
+float GameConfig::GetActionExecuteDelay() const {
+    return GetConfigValueFloat("combat", "action_execute_delay", 1.0f);
+}
+
+float GameConfig::GetTurnEndDelay() const {
+    return GetConfigValueFloat("combat", "turn_end_delay", 1.5f);
+}
+
+float GameConfig::GetBattleStartDelay() const {
+    return GetConfigValueFloat("combat", "battle_start_delay", 2.0f);
+}
+
+float GameConfig::GetBattleEndDelay() const {
+    return GetConfigValueFloat("combat", "battle_end_delay", 3.0f);
+}
+
+// Combat rewards
+int GameConfig::GetBaseExperience() const {
+    return GetConfigValueInt("combat", "base_experience", 50);
+}
+
+int GameConfig::GetBaseGold() const {
+    return GetConfigValueInt("combat", "base_gold", 25);
+}
+
+int GameConfig::GetExperiencePerEnemyLevel() const {
+    return GetConfigValueInt("combat", "experience_per_enemy_level", 10);
+}
+
+int GameConfig::GetGoldPerEnemyLevel() const {
+    return GetConfigValueInt("combat", "gold_per_enemy_level", 5);
+}
+
+// Combat balance
+float GameConfig::GetPlayerHealthMultiplier() const {
+    return GetConfigValueFloat("combat", "player_health_multiplier", 1.0f);
+}
+
+float GameConfig::GetEnemyHealthMultiplier() const {
+    return GetConfigValueFloat("combat", "enemy_health_multiplier", 1.0f);
+}
+
+float GameConfig::GetDamageVariance() const {
+    return GetConfigValueFloat("combat", "damage_variance", 0.2f);
+}
+
+float GameConfig::GetAccuracyBase() const {
+    return GetConfigValueFloat("combat", "accuracy_base", 85.0f);
+}
+
+// Combat audio
+float GameConfig::GetCombatMusicVolume() const {
+    return GetConfigValueFloat("combat", "combat_music_volume", 0.7f);
+}
+
+float GameConfig::GetAttackSoundVolume() const {
+    return GetConfigValueFloat("combat", "attack_sound_volume", 0.8f);
+}
+
+float GameConfig::GetMagicSoundVolume() const {
+    return GetConfigValueFloat("combat", "magic_sound_volume", 0.9f);
+}
+
+float GameConfig::GetVictorySoundVolume() const {
+    return GetConfigValueFloat("combat", "victory_sound_volume", 0.6f);
+}
+
+float GameConfig::GetDefeatSoundVolume() const {
+    return GetConfigValueFloat("combat", "defeat_sound_volume", 0.5f);
+}
+
 // Helper method for colors
 Color GameConfig::GetColorFromConfig(const ConfigManager& config, const std::string& section, 
                                    const std::string& prefix, const Color& defaultColor) const {

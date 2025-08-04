@@ -408,6 +408,112 @@ struct AIComponent : public Component {
 };
 
 /**
+ * @struct CombatStatsComponent
+ * @brief Component that defines combat-specific statistics
+ */
+struct CombatStatsComponent : public Component {
+    float attackPower = 15.0f;       ///< Base physical attack damage
+    float defense = 5.0f;            ///< Physical damage reduction
+    float magicPower = 10.0f;        ///< Base magic attack damage
+    float magicDefense = 3.0f;       ///< Magic damage reduction
+    float speed = 100.0f;            ///< Initiative/turn order speed
+    float accuracy = 85.0f;          ///< Hit chance percentage
+    float criticalChance = 5.0f;     ///< Critical hit chance percentage
+    float criticalMultiplier = 2.0f; ///< Critical hit damage multiplier
+
+    CombatStatsComponent() = default;
+    CombatStatsComponent(float atk, float def, float spd)
+        : Component(), attackPower(atk), defense(def), speed(spd) {}
+};
+
+/**
+ * @struct CombatActionComponent
+ * @brief Component that defines available combat actions for an entity
+ */
+struct CombatActionComponent : public Component {
+    enum class ActionType {
+        ATTACK,
+        DEFEND,
+        MAGIC_ATTACK,
+        HEAL,
+        BUFF,
+        DEBUFF,
+        ITEM,
+        FLEE
+    };
+
+    struct CombatAction {
+        ActionType type;
+        std::string name;
+        float mpCost = 0.0f;
+        float power = 1.0f;
+        bool targetsSelf = false;
+        bool targetsAll = false;
+
+        CombatAction(ActionType t, const std::string& n, float cost = 0.0f, float pow = 1.0f)
+            : type(t), name(n), mpCost(cost), power(pow) {}
+    };
+
+    std::vector<CombatAction> availableActions;
+    int selectedActionIndex = 0;
+
+    CombatActionComponent() {
+        // Default actions for all entities
+        availableActions.emplace_back(ActionType::ATTACK, "Attack");
+        availableActions.emplace_back(ActionType::DEFEND, "Defend");
+    }
+};
+
+/**
+ * @struct TurnOrderComponent
+ * @brief Component that manages turn-based combat order
+ */
+struct TurnOrderComponent : public Component {
+    float initiative = 100.0f;       ///< Base initiative value
+    float currentInitiative = 100.0f; ///< Current turn initiative
+    int turnOrder = 0;               ///< Position in turn order (0 = first)
+    bool hasTakenTurn = false;       ///< Whether entity has acted this round
+    bool isDefending = false;        ///< Whether entity is in defensive stance
+    float defenseBonus = 0.0f;       ///< Temporary defense bonus
+
+    TurnOrderComponent() = default;
+    TurnOrderComponent(float init) : Component(), initiative(init), currentInitiative(init) {}
+
+    /**
+     * @brief Reset for new combat round
+     */
+    void ResetForNewRound() {
+        hasTakenTurn = false;
+        isDefending = false;
+        defenseBonus = 0.0f;
+        currentInitiative = initiative;
+    }
+};
+
+/**
+ * @struct BattleParticipantComponent
+ * @brief Component that marks entities as participants in current battle
+ */
+struct BattleParticipantComponent : public Component {
+    enum class ParticipantType {
+        PLAYER,
+        ALLY,
+        ENEMY,
+        NEUTRAL
+    };
+
+    ParticipantType type = ParticipantType::NEUTRAL;
+    bool isAlive = true;
+    bool canAct = true;
+    int battlePosition = 0;          ///< Position in battle formation
+    Entity originalEntity;           ///< Reference to original world entity
+
+    BattleParticipantComponent() = default;
+    BattleParticipantComponent(ParticipantType t, int pos = 0)
+        : Component(), type(t), battlePosition(pos) {}
+};
+
+/**
  * @struct AbilityComponent
  * @brief Component that defines special abilities for entities
  */
