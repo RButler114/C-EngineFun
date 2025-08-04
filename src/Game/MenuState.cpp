@@ -111,10 +111,19 @@ void MenuState::HandleInput() {
     enterWasPressed = enterPressed;
     spaceWasPressed = spacePressed;
 
-    // Quick quit
+    // Quick quit - but only if QUIT is already selected, otherwise select QUIT
     if (input->IsKeyJustPressed(SDL_SCANCODE_ESCAPE)) {
         std::cout << "ESCAPE key pressed!" << std::endl;
-        GetEngine()->Quit();
+        if (m_selectedOption == static_cast<int>(MenuOption::QUIT)) {
+            // If QUIT is already selected, confirm quit
+            GetEngine()->Quit();
+        } else {
+            // Otherwise, navigate to QUIT option
+            m_selectedOption = static_cast<int>(MenuOption::QUIT);
+            m_showSelection = true;
+            m_blinkTimer = 0.0f;
+            std::cout << "Navigate to QUIT option - press ESCAPE again or ENTER to confirm" << std::endl;
+        }
     }
 }
 
@@ -155,9 +164,9 @@ void MenuState::SelectOption() {
 
     switch (option) {
         case MenuOption::START_GAME:
-            std::cout << "Starting game..." << std::endl;
+            std::cout << "Opening character customization..." << std::endl;
             if (GetStateManager()) {
-                GetStateManager()->ChangeState(GameStateType::PLAYING);
+                GetStateManager()->ChangeState(GameStateType::CUSTOMIZATION);
             }
             break;
 

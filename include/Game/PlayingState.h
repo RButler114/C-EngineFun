@@ -4,6 +4,7 @@
 #include "ECS/EntityManager.h"
 #include "Game/GameConfig.h"
 #include "Game/CharacterFactory.h"
+#include "Game/PlayerCustomization.h"
 #include <memory>
 
 class PlayingState : public GameState {

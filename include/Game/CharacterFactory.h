@@ -152,6 +152,15 @@ public:
     Entity CreatePlayer(float x, float y) {
         return CreateCharacter("player", x, y);
     }
+
+    /**
+     * @brief Create a customized player character
+     * @param x Starting X position
+     * @param y Starting Y position
+     * @param customization Player customization data
+     * @return Created player entity
+     */
+    Entity CreateCustomizedPlayer(float x, float y, const struct PlayerCustomization& customization);
     
     /**
      * @brief Create a basic enemy

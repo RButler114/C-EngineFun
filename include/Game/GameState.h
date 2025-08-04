@@ -10,6 +10,7 @@ class GameStateManager;
 
 enum class GameStateType {
     MENU,
+    CUSTOMIZATION,
     PLAYING,
     PAUSED,
     GAME_OVER,

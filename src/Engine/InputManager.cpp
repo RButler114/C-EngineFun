@@ -69,9 +69,7 @@ bool InputManager::HandleEvent(const SDL_Event& event) {
             return true;
 
         case SDL_KEYDOWN:
-            if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
-                m_quitRequested = true;
-            }
+            // Remove automatic quit on escape - let game states handle it
             return true;
 
         case SDL_KEYUP:

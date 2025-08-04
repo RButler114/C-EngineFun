@@ -307,10 +307,10 @@ void PlayingState::HandleInput() {
     if (!input) return;
     
     // Pause game or return to menu
-    if (input->IsKeyJustPressed(SDL_SCANCODE_P)) {
+    if (input->IsKeyJustPressed(SDL_SCANCODE_P) || input->IsKeyJustPressed(SDL_SCANCODE_ESCAPE)) {
         std::cout << "Game paused (not implemented yet)" << std::endl;
     }
-    if (input->IsKeyJustPressed(SDL_SCANCODE_ESCAPE)) {
+    if (input->IsKeyJustPressed(SDL_SCANCODE_M)) {
         std::cout << "Returning to menu..." << std::endl;
         if (GetStateManager()) {
             GetStateManager()->ChangeState(GameStateType::MENU);
@@ -443,27 +443,40 @@ void PlayingState::HandleInput() {
 }
 
 void PlayingState::CreatePlayer() {
-    if (!m_entityManager) return;
+    if (!m_entityManager || !m_characterFactory) return;
 
-    m_player = m_entityManager->CreateEntity();
-    std::cout << "Created player entity with ID: " << m_player.GetID() << std::endl;
-
-    // Create components with config values
+    // Get player position from config
     float playerX = m_gameConfig->GetPlayerStartX();
     float playerY = m_gameConfig->GetPlayerStartY();
     std::cout << "Creating player at position: " << playerX << ", " << playerY << std::endl;
 
-    // Add transform and velocity components
-    auto* transform = m_entityManager->AddComponent<TransformComponent>(m_player, playerX, playerY);
-    auto* velocity = m_entityManager->AddComponent<VelocityComponent>(m_player, 0.0f, 0.0f);
-    auto* audio = m_entityManager->AddComponent<AudioComponent>(m_player, "jump", m_gameConfig->GetJumpSoundVolume(), false, false, false); // Jump sound on demand
+    // Try to get customization data from the global customization manager
+    const PlayerCustomization& customization = CustomizationManager::GetInstance().GetPlayerCustomization();
+
+    // Create player using customization data if available
+    if (!customization.playerName.empty() && customization.playerName != "Hero") {
+        std::cout << "Creating customized player: " << customization.playerName
+                  << " (" << customization.characterClass << ")" << std::endl;
+        m_player = m_characterFactory->CreateCustomizedPlayer(playerX, playerY, customization);
+    } else {
+        std::cout << "Creating default player" << std::endl;
+        m_player = m_characterFactory->CreatePlayer(playerX, playerY);
+    }
+
+    if (!m_player.IsValid()) {
+        std::cerr << "Failed to create player entity!" << std::endl;
+        return;
+    }
+
+    std::cout << "Created player entity with ID: " << m_player.GetID() << std::endl;
+
+    // Add audio component for jump sound
+    auto* audio = m_entityManager->AddComponent<AudioComponent>(m_player, "jump", m_gameConfig->GetJumpSoundVolume(), false, false, false);
 
     // Using direct sprite rendering for better control in arcade games
     // This approach gives us precise control over animation and rendering
 
-    std::cout << "Added components to player:" << std::endl;
-    std::cout << "  Transform: " << (transform ? "OK" : "FAILED") << std::endl;
-    std::cout << "  Velocity: " << (velocity ? "OK" : "FAILED") << std::endl;
+    std::cout << "Player created successfully with customizations applied" << std::endl;
     std::cout << "  Using direct sprite rendering (bypassing ECS)" << std::endl;
 }
 

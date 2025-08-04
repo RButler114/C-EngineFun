@@ -21,6 +21,7 @@
 #include "Engine/InputManager.h"
 #include "Game/GameStateManager.h"
 #include "Game/MenuState.h"
+#include "Game/CustomizationState.h"
 #include "Game/PlayingState.h"
 #include "Game/GameOverState.h"
 #include "Game/OptionsState.h"
@@ -57,6 +58,7 @@ public:
 
         // Add all game states
         m_stateManager->AddState(GameStateType::MENU, std::make_unique<MenuState>());
+        m_stateManager->AddState(GameStateType::CUSTOMIZATION, std::make_unique<CustomizationState>());
         m_stateManager->AddState(GameStateType::PLAYING, std::make_unique<PlayingState>());
         m_stateManager->AddState(GameStateType::GAME_OVER, std::make_unique<GameOverState>());
         m_stateManager->AddState(GameStateType::OPTIONS, std::make_unique<OptionsState>());
