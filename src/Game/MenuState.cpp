@@ -41,16 +41,6 @@ void MenuState::OnExit() {
 }
 
 void MenuState::Update(float deltaTime) {
-    // TEMPORARY: Auto-progress for debugging
-    static float autoTimer = 0.0f;
-    autoTimer += deltaTime;
-    if (autoTimer >= 3.0f) {
-        std::cout << "🧪 DEBUG: Auto-progressing to test sprite and movement" << std::endl;
-        SelectOption();
-        autoTimer = 0.0f;
-        return;
-    }
-
     HandleInput(); // Handle user input
 
     // Update selection blink effect

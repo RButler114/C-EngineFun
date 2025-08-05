@@ -25,45 +25,8 @@ void SpriteRenderSystem::Update(float deltaTime) {
         return;
     }
 
-    // Debug: Check if Update is being called - use a different counter
-    static int updateCount = 0;
-    updateCount++;
-    if (updateCount == 1) {
-        std::cout << "🎨 SpriteRenderSystem::Update called for the FIRST time!" << std::endl;
-    }
-    if (updateCount % 60 == 0) { // Every 60 frames (1 second at 60fps)
-        std::cout << "🎨 SpriteRenderSystem::Update called " << updateCount << " times" << std::endl;
-    }
-
     // Get all entities with both TransformComponent and SpriteComponent
     auto entities = m_entityManager->GetEntitiesWith<TransformComponent, SpriteComponent>();
-
-    // Debug: Print sprite entities found (every 60 frames)
-    if (updateCount % 60 == 0) {
-        std::cout << "🎨 SpriteRenderSystem: Found " << entities.size() << " entities with sprites" << std::endl;
-        for (Entity entity : entities) {
-            auto* sprite = m_entityManager->GetComponent<SpriteComponent>(entity);
-            if (sprite) {
-                std::cout << "  📽️  Entity " << entity.GetID() << ": " << sprite->texturePath
-                          << " (visible: " << sprite->visible << ")" << std::endl;
-            }
-        }
-
-        // Also check if player entity has the components individually
-        Entity playerEntity(1); // We know player is entity 1
-        auto* playerTransform = m_entityManager->GetComponent<TransformComponent>(playerEntity);
-        auto* playerSprite = m_entityManager->GetComponent<SpriteComponent>(playerEntity);
-        bool hasTransform = m_entityManager->HasComponent<TransformComponent>(playerEntity);
-        bool hasSprite = m_entityManager->HasComponent<SpriteComponent>(playerEntity);
-
-        std::cout << "🎮 Player Entity 1 - Transform: " << (playerTransform ? "✅" : "❌")
-                  << ", Sprite: " << (playerSprite ? "✅" : "❌") << std::endl;
-        std::cout << "🎮 Player Entity 1 - HasTransform: " << (hasTransform ? "✅" : "❌")
-                  << ", HasSprite: " << (hasSprite ? "✅" : "❌") << std::endl;
-        if (playerSprite) {
-            std::cout << "🎮 Player sprite path: '" << playerSprite->texturePath << "'" << std::endl;
-        }
-    }
 
     // TODO: In the future, we could sort entities by render layer or depth here
     // For now, render in the order they're returned
@@ -119,21 +82,11 @@ void SpriteRenderSystem::RenderSprite(Entity entity, const TransformComponent* t
     // Load texture
     auto texture = m_renderer->LoadTexture(sprite->texturePath);
     if (!texture) {
-        // Debug: Log texture loading failure
-        std::cout << "🚨 TEXTURE LOAD FAILED for Entity " << entity.GetID()
-                  << ": '" << sprite->texturePath << "'" << std::endl;
-
         // Render placeholder rectangle if texture fails to load
         Rectangle rect(screenX, screenY, finalWidth, finalHeight);
         Color placeholderColor(255, 100, 255, 255); // Slightly different magenta for missing file
         m_renderer->DrawRectangle(rect, placeholderColor, true);
-        std::cout << "🎨 PLACEHOLDER: Rendered magenta rectangle at (" << screenX << ", " << screenY
-                  << ") size " << finalWidth << "x" << finalHeight << std::endl;
         return;
-    } else {
-        // Debug: Log successful texture loading
-        std::cout << "✅ TEXTURE LOADED for Entity " << entity.GetID()
-                  << ": '" << sprite->texturePath << "'" << std::endl;
     }
     
     // Set up source rectangle (from sprite sheet)

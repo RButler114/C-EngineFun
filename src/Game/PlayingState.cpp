@@ -2,7 +2,6 @@
 #include "Game/CombatState.h"
 #include "Game/GameStateManager.h"
 #include "Game/GameOverState.h"
-#include "Game/AnimationFactory.h"
 #include "Engine/Renderer.h"
 #include "Engine/InputManager.h"
 #include "Engine/Engine.h"
@@ -15,7 +14,6 @@
 #include <cmath>
 #include <cstring>
 #include <chrono>
-#include <fstream>
 
 PlayingState::PlayingState()
     : GameState(GameStateType::PLAYING, "Playing")
@@ -58,29 +56,14 @@ void PlayingState::OnEnter() {
     m_entityManager->AddSystem<MovementSystem>();
     auto* collisionSystem = m_entityManager->AddSystem<CollisionSystem>();
 
-    // Add animation system for sprite animations
-    auto* animationSystem = m_entityManager->AddSystem<AnimationSystem>();
 
-    // Add sprite render system for rendering animated sprites
-    std::cout << "🎨 DEBUG: Adding SpriteRenderSystem..." << std::endl;
-    auto* spriteRenderSystem = m_entityManager->AddSystem<SpriteRenderSystem>(GetRenderer());
-    if (spriteRenderSystem) {
-        spriteRenderSystem->SetScreenDimensions(m_gameConfig->GetScreenWidth(), m_gameConfig->GetScreenHeight());
-        std::cout << "✅ DEBUG: SpriteRenderSystem added successfully" << std::endl;
-    } else {
-        std::cout << "❌ ERROR: Failed to add SpriteRenderSystem!" << std::endl;
-    }
 
     // Set up collision callback for combat triggering
     collisionSystem->SetCollisionCallback([this](const CollisionInfo& info) {
         OnCollision(info);
     });
 
-    // Set up animation event callback for gameplay integration
-    animationSystem->SetAnimationEventCallback([this](Entity entity, const std::string& animationName,
-                                                      const std::string& eventType, int frameIndex) {
-        OnAnimationEvent(entity, animationName, eventType, frameIndex);
-    });
+
 
     // Initialize CharacterFactory now that EntityManager is ready
     m_characterFactory = std::make_unique<CharacterFactory>(m_entityManager.get());
@@ -171,90 +154,39 @@ void PlayingState::Update(float deltaTime) {
 
     // Update ECS
     if (m_entityManager) {
-        // Update player animation based on movement before ECS update
-        UpdatePlayerAnimation();
-
-        // Update camera for sprite render system
-        auto* spriteRenderSystem = m_entityManager->GetSystem<SpriteRenderSystem>();
-        if (spriteRenderSystem) {
-            spriteRenderSystem->SetCameraOffset(m_cameraX, 0.0f);
-        } else {
-            static int errorCount = 0;
-            if (errorCount < 5) { // Only show first 5 errors to avoid spam
-                std::cout << "⚠️  WARNING: SpriteRenderSystem not found in EntityManager!" << std::endl;
-                errorCount++;
-            }
-        }
-
         m_entityManager->Update(deltaTime);
     }
 
 
 
-    // TEMPORARY: Auto-test movement to verify sprite visibility
-    static float testTimer = 0.0f;
-    static int testPhase = 0;
-    testTimer += deltaTime;
+    // Update player position (simple movement system like main branch)
+    m_playerX += m_playerVelX * deltaTime;
+    m_playerY += m_playerVelY * deltaTime;
 
-    if (testPhase == 0 && testTimer >= 2.0f) {
-        std::cout << "🧪 AUTO-MOVEMENT: Testing right movement" << std::endl;
-        m_playerVelX = m_gameConfig->GetPlayerMovementSpeed();
-        testPhase = 1;
-        testTimer = 0.0f;
-    } else if (testPhase == 1 && testTimer >= 3.0f) {
-        std::cout << "🧪 AUTO-MOVEMENT: Testing left movement" << std::endl;
-        m_playerVelX = -m_gameConfig->GetPlayerMovementSpeed();
-        testPhase = 2;
-        testTimer = 0.0f;
-    } else if (testPhase == 2 && testTimer >= 3.0f) {
-        std::cout << "🧪 AUTO-MOVEMENT: Stopping movement" << std::endl;
-        m_playerVelX = 0;
-        testPhase = 3;
-        testTimer = 0.0f;
-    }
-
-    // Sync simple movement variables to ECS VelocityComponent (FIX for movement issue)
-    if (m_player.IsValid() && m_entityManager) {
-        auto* velocity = m_entityManager->GetComponent<VelocityComponent>(m_player);
-        if (velocity) {
-            // Debug movement sync
-            if (m_playerVelX != 0 || m_playerVelY != 0) {
-                std::cout << "🏃 MOVEMENT: Setting velocity (" << m_playerVelX << ", " << m_playerVelY << ") to ECS" << std::endl;
-            }
-            velocity->vx = m_playerVelX;
-            velocity->vy = m_playerVelY;
-        } else {
-            std::cout << "❌ ERROR: Player has no VelocityComponent!" << std::endl;
-        }
-    }
-
-    // Let the ECS MovementSystem handle position updates
-    // Get updated position from ECS after MovementSystem processes it
-    if (m_player.IsValid() && m_entityManager) {
-        auto* transform = m_entityManager->GetComponent<TransformComponent>(m_player);
-        if (transform) {
-            float oldX = m_playerX;
-            float oldY = m_playerY;
-            m_playerX = transform->x;
-            m_playerY = transform->y;
-
-            // Debug position changes
-            if (oldX != m_playerX || oldY != m_playerY) {
-                std::cout << "📍 POSITION: Player moved from (" << oldX << ", " << oldY << ") to (" << m_playerX << ", " << m_playerY << ")" << std::endl;
-            }
-        }
-    }
-
-    // Keep player within bounds
+    // Keep player within bounds and update ECS transform
     float leftBoundary = m_cameraX + m_gameConfig->GetPlayerCameraLeftBoundary();
+    bool positionChanged = false;
+
     if (m_playerX < leftBoundary) {
         m_playerX = leftBoundary; // Don't go too far left of camera
+        positionChanged = true;
     }
     if (m_playerY < m_gameConfig->GetPlayerSkyLimit()) {
         m_playerY = m_gameConfig->GetPlayerSkyLimit(); // Sky limit
+        positionChanged = true;
     }
     if (m_playerY > m_gameConfig->GetPlayerGroundLimit()) {
         m_playerY = m_gameConfig->GetPlayerGroundLimit(); // Ground limit
+        positionChanged = true;
+    }
+
+    // If we clamped the position, update the ECS transform component
+    if (positionChanged && m_player.IsValid() && m_entityManager) {
+        auto* transform = m_entityManager->GetComponent<TransformComponent>(m_player);
+        if (transform) {
+            transform->x = m_playerX;
+            transform->y = m_playerY;
+        }
     }
 
     // Position sync is now handled above - ECS MovementSystem updates TransformComponent
@@ -325,50 +257,47 @@ void PlayingState::Render() {
     int debugFrameInterval = m_gameConfig->GetDebugFrameInterval();
     bool shouldDebug = (debugFrameCount % debugFrameInterval == 1);
 
-    // Update player transform component to match current position
+    // Update player transform component to match current position (like main branch)
     int playerScreenX = static_cast<int>(m_playerX - m_cameraX);
     int playerScreenY = static_cast<int>(m_playerY);
 
     if (m_entityManager && m_entityManager->IsEntityValid(m_player)) {
         auto* transform = m_entityManager->GetComponent<TransformComponent>(m_player);
         if (transform) {
-            transform->x = playerScreenX; // Screen position
-            transform->y = playerScreenY;
+            // Update ECS transform to match manual position (for collision detection)
+            transform->x = m_playerX;
+            transform->y = m_playerY;
 
             if (shouldDebug) {
-                std::cout << "  ✅ Player: world(" << m_playerX << ", " << m_playerY
-                          << ") screen(" << transform->x << ", " << transform->y << ")" << std::endl;
+                std::cout << "  ✅ Player: manual(" << m_playerX << ", " << m_playerY
+                          << ") screen(" << playerScreenX << ", " << playerScreenY << ")" << std::endl;
             }
         }
     }
 
-    // Player sprite rendering is now handled by SpriteRenderSystem
-    // Position is managed by ECS MovementSystem
-
-    // Optional: Draw fallback shapes if sprite system fails
+    // Render player sprite using SpriteRenderer (like main branch)
     int spriteWidth = m_gameConfig->GetAnimationSpriteWidth();
     if (playerScreenX > -spriteWidth && playerScreenX < screenWidth + spriteWidth) {
-        // Check if we need fallback rendering
-        auto texture = renderer->LoadTexture("assets/sprites/player/little_adventurer.png");
-        if (!texture) {
-            // Simple shape-based player character using config colors and dimensions
-            Color bodyColor = m_gameConfig->GetPlayerBodyColor();
-            int bodyWidth = m_gameConfig->GetPlayerBodyWidth();
-            int bodyHeight = m_gameConfig->GetPlayerBodyHeight();
-            int bodyOffsetX = m_gameConfig->GetPlayerBodyOffsetX();
-            int bodyOffsetY = m_gameConfig->GetPlayerBodyOffsetY();
-            Rectangle bodyRect(playerScreenX + bodyOffsetX, playerScreenY + bodyOffsetY, bodyWidth, bodyHeight);
-            renderer->DrawRectangle(bodyRect, bodyColor, true);
+        // Calculate animation frame
+        static int currentFrame = 0;
+        static float frameTimer = 0.0f;
+        float frameDuration = m_gameConfig->GetAnimationFrameDuration();
 
-            // Head
-            Color headColor = m_gameConfig->GetPlayerHeadColor();
-            int headWidth = m_gameConfig->GetPlayerHeadWidth();
-            int headHeight = m_gameConfig->GetPlayerHeadHeight();
-            int headOffsetX = m_gameConfig->GetPlayerHeadOffsetX();
-            int headOffsetY = m_gameConfig->GetPlayerHeadOffsetY();
-            Rectangle headRect(playerScreenX + headOffsetX, playerScreenY + headOffsetY, headWidth, headHeight);
-            renderer->DrawRectangle(headRect, headColor, true);
+        frameTimer += 0.016f; // Approximate frame time
+        if (frameTimer >= frameDuration) {
+            frameTimer = 0.0f;
+            currentFrame = (currentFrame + 1) % m_gameConfig->GetAnimationTotalFrames();
         }
+
+        // Try sprite rendering with the simple SpriteRenderer overload
+        int spriteHeight = m_gameConfig->GetAnimationSpriteHeight();
+        float spriteScale = m_gameConfig->GetAnimationSpriteScale();
+        bool facingLeft = (m_playerVelX < 0);
+
+        // Use the simple SpriteRenderer::RenderSprite overload (width, height version)
+        SpriteRenderer::RenderSprite(renderer, "assets/sprites/player/little_adventurer.png",
+                                   playerScreenX, playerScreenY, spriteWidth, spriteHeight,
+                                   facingLeft, spriteScale);
     }
 
     // Manual sprite rendering for better control in arcade games
@@ -485,11 +414,9 @@ void PlayingState::HandleInput() {
     // Horizontal movement
     if (input->IsKeyPressed(SDL_SCANCODE_LEFT) || input->IsKeyPressed(SDL_SCANCODE_A)) {
         m_playerVelX = -speed;
-        std::cout << "⬅️ INPUT: LEFT/A key pressed - velocity set to " << m_playerVelX << std::endl;
     }
     if (input->IsKeyPressed(SDL_SCANCODE_RIGHT) || input->IsKeyPressed(SDL_SCANCODE_D)) {
         m_playerVelX = speed;
-        std::cout << "➡️ INPUT: RIGHT/D key pressed - velocity set to " << m_playerVelX << std::endl;
     }
 
     // Vertical movement (constrained to ground level area)
@@ -590,14 +517,24 @@ void PlayingState::CreatePlayer() {
     // Get or update existing transform component (CharacterFactory already created it)
     auto* transform = m_entityManager->GetComponent<TransformComponent>(m_player);
     if (transform) {
-        // Update existing transform to correct position
-        transform->x = m_playerX;
-        transform->y = m_playerY;
-        std::cout << "DEBUG: Updated existing TransformComponent to (" << transform->x << ", " << transform->y << ")" << std::endl;
+        // Check for corrupted transform data and fix it
+        if (std::isnan(transform->x) || std::isnan(transform->y) ||
+            std::abs(transform->x) > 10000.0f || std::abs(transform->y) > 10000.0f) {
+            std::cout << "⚠️ WARNING: Corrupted transform data detected, fixing..." << std::endl;
+            transform->x = playerX;
+            transform->y = playerY;
+        }
+
+        // Sync manual position variables with ECS position
+        m_playerX = transform->x;
+        m_playerY = transform->y;
+        std::cout << "DEBUG: Synced position from ECS TransformComponent (" << transform->x << ", " << transform->y << ")" << std::endl;
     } else {
         // This shouldn't happen since CharacterFactory should create it
         std::cerr << "ERROR: Player has no TransformComponent from CharacterFactory!" << std::endl;
-        transform = m_entityManager->AddComponent<TransformComponent>(m_player, m_playerX, m_playerY);
+        transform = m_entityManager->AddComponent<TransformComponent>(m_player, playerX, playerY);
+        m_playerX = playerX;
+        m_playerY = playerY;
         std::cout << "DEBUG: Added new TransformComponent at (" << transform->x << ", " << transform->y << ")" << std::endl;
     }
 
@@ -608,53 +545,34 @@ void PlayingState::CreatePlayer() {
 
     auto* sprite = m_entityManager->GetComponent<SpriteComponent>(m_player);
     if (sprite) {
-        std::cout << "✅ DEBUG: Found existing SpriteComponent for player entity " << m_player.GetID() << std::endl;
-        std::cout << "🎨 DEBUG: Sprite path: '" << sprite->texturePath << "', visible: " << sprite->visible << std::endl;
-        std::cout << "📏 DEBUG: Sprite dimensions: " << sprite->width << "x" << sprite->height << ", scale: " << sprite->scaleX << "x" << sprite->scaleY << std::endl;
-
-        // Force correct sprite path if it's wrong
-        if (sprite->texturePath != "assets/sprites/player/little_adventurer.png") {
-            std::cout << "🔧 FIXING: Correcting sprite path from '" << sprite->texturePath << "'" << std::endl;
-            sprite->texturePath = "assets/sprites/player/little_adventurer.png";
-            sprite->visible = true;
-            std::cout << "✅ FIXED: Sprite path now: '" << sprite->texturePath << "', visible: " << sprite->visible << std::endl;
-        }
-
-        // Fix sprite scale - make it much larger so it's visible
-        if (sprite->scaleX < 2.0f || sprite->scaleY < 2.0f) {
-            std::cout << "🔧 FIXING: Sprite too small (" << sprite->scaleX << "x" << sprite->scaleY << "), increasing scale" << std::endl;
-            sprite->scaleX = 4.0f;  // Make it 4x larger
-            sprite->scaleY = 4.0f;
-            std::cout << "✅ FIXED: Sprite scale now: " << sprite->scaleX << "x" << sprite->scaleY << std::endl;
-        }
-
-        // Verify file exists
-        std::ifstream file(sprite->texturePath);
-        if (file.good()) {
-            std::cout << "📁 FILE CHECK: Sprite file exists at '" << sprite->texturePath << "'" << std::endl;
-        } else {
-            std::cout << "❌ FILE CHECK: Sprite file NOT FOUND at '" << sprite->texturePath << "'" << std::endl;
-        }
+        // Update the existing sprite component with correct path and dimensions
+        sprite->texturePath = "assets/sprites/player/little_adventurer.png";
+        sprite->width = spriteWidth;
+        sprite->height = spriteHeight;
+        sprite->frameWidth = spriteWidth;
+        sprite->frameHeight = spriteHeight;
+        sprite->scaleX = spriteScale;
+        sprite->scaleY = spriteScale;
+        sprite->visible = true;
+        std::cout << "✅ DEBUG: Updated existing SpriteComponent for player entity " << m_player.GetID() << std::endl;
     } else {
         std::cout << "❌ ERROR: Player entity doesn't have SpriteComponent from CharacterFactory!" << std::endl;
     }
 
-    std::cout << "🔧 DEBUG: Finished checking SpriteComponent, about to update other components..." << std::endl;
-
     // CharacterFactory already added all necessary components, just update them if needed
-    std::cout << "🔧 DEBUG: About to update CollisionComponent..." << std::endl;
+
+    // Remove VelocityComponent from player - we use manual position tracking like main branch
+    if (m_entityManager->HasComponent<VelocityComponent>(m_player)) {
+        m_entityManager->RemoveComponent<VelocityComponent>(m_player);
+        std::cout << "🔧 Removed VelocityComponent from player - using manual movement" << std::endl;
+    }
 
     // Update collision component size if it exists
     auto* collision = m_entityManager->GetComponent<CollisionComponent>(m_player);
     if (collision) {
         collision->width = 32.0f;
         collision->height = 48.0f;
-        std::cout << "✅ DEBUG: Updated CollisionComponent size" << std::endl;
-    } else {
-        std::cout << "❌ DEBUG: No CollisionComponent found" << std::endl;
     }
-
-    std::cout << "🔧 DEBUG: About to update CombatStatsComponent..." << std::endl;
 
     // Update combat stats if they exist
     auto* combatStats = m_entityManager->GetComponent<CombatStatsComponent>(m_player);
@@ -662,12 +580,7 @@ void PlayingState::CreatePlayer() {
         combatStats->attackPower = m_gameConfig->GetBaseAttackDamage();
         combatStats->defense = m_gameConfig->GetBaseDefense();
         combatStats->speed = m_gameConfig->GetBaseSpeed();
-        std::cout << "✅ DEBUG: Updated CombatStatsComponent" << std::endl;
-    } else {
-        std::cout << "❌ DEBUG: No CombatStatsComponent found" << std::endl;
     }
-
-    std::cout << "🔧 DEBUG: Finished CreatePlayer function" << std::endl;
 
     // // Add animation component with player animations
     // auto* animComp = m_entityManager->AddComponent<AnimationComponent>(m_player);
@@ -984,67 +897,7 @@ void PlayingState::UpdateScore() {
     }
 }
 
-void PlayingState::UpdatePlayerAnimation() {
-    // Update player animation state based on movement
-    if (!m_player.IsValid() || !m_entityManager) return;
 
-    auto* animSystem = m_entityManager->GetSystem<AnimationSystem>();
-    if (!animSystem) return;
-
-    // Determine animation state based on player velocity
-    float movementThreshold = m_gameConfig->GetPlayerMovementThreshold();
-    bool isMoving = (std::abs(m_playerVelX) > movementThreshold || std::abs(m_playerVelY) > movementThreshold);
-
-    AnimationState currentState = animSystem->GetCurrentState(m_player);
-    AnimationState newState = currentState;
-
-    if (isMoving) {
-        // Check if jumping/falling
-        if (std::abs(m_playerVelY) > movementThreshold) {
-            newState = (m_playerVelY < 0) ? AnimationState::JUMPING : AnimationState::FALLING;
-        } else {
-            // Walking horizontally
-            newState = AnimationState::WALKING;
-        }
-    } else {
-        // Not moving - idle
-        newState = AnimationState::IDLE;
-    }
-
-    // Transition to new state if different
-    if (newState != currentState) {
-        animSystem->TransitionToState(m_player, newState);
-    }
-
-    // Update sprite flipping based on horizontal movement
-    auto* sprite = m_entityManager->GetComponent<SpriteComponent>(m_player);
-    if (sprite && std::abs(m_playerVelX) > movementThreshold) {
-        sprite->flipHorizontal = (m_playerVelX < 0);
-    }
-}
-
-void PlayingState::OnAnimationEvent(Entity entity, const std::string& animationName,
-                                   const std::string& eventType, int frameIndex) {
-    // Handle animation events for gameplay integration
-    (void)frameIndex; // Suppress unused parameter warning
-
-    if (entity == m_player) {
-        if (eventType == "start") {
-            std::cout << "Player started animation: " << animationName << std::endl;
-        } else if (eventType == "end") {
-            std::cout << "Player finished animation: " << animationName << std::endl;
-
-            // Handle non-looping animations
-            if (animationName == "attack" || animationName == "hurt") {
-                // Return to idle after attack or hurt animation
-                auto* animSystem = m_entityManager->GetSystem<AnimationSystem>();
-                if (animSystem) {
-                    animSystem->TransitionToState(m_player, AnimationState::IDLE);
-                }
-            }
-        }
-    }
-}
 
 void PlayingState::ResetGameState() {
     // Reset game variables to initial state

@@ -50,15 +50,10 @@ private:
     void CheckGameOver();
     void DrawScrollingBackground();
     void UpdateScore();
-    void UpdatePlayerAnimation();
     void ResetGameState();
     void CreateConfigAwareCharacter(const std::string& characterType, float x, float y, float difficultyMultiplier = 1.0f);
 
     // Combat integration
     void OnCollision(const CollisionInfo& info);
     void TriggerCombat(Entity player, Entity enemy);
-
-    // Animation integration
-    void OnAnimationEvent(Entity entity, const std::string& animationName,
-                         const std::string& eventType, int frameIndex);
 };
