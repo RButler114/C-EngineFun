@@ -2,6 +2,7 @@
 #include "Game/CombatState.h"
 #include "Game/GameStateManager.h"
 #include "Game/GameOverState.h"
+#include "Game/AnimationFactory.h"
 #include "Engine/Renderer.h"
 #include "Engine/InputManager.h"
 #include "Engine/Engine.h"
@@ -13,6 +14,8 @@
 #include <cstdlib>
 #include <cmath>
 #include <cstring>
+#include <chrono>
+#include <fstream>
 
 PlayingState::PlayingState()
     : GameState(GameStateType::PLAYING, "Playing")
@@ -24,7 +27,11 @@ PlayingState::PlayingState()
     , m_playerX(0.0f)  // Will be set from config in OnEnter
     , m_playerY(0.0f)  // Will be set from config in OnEnter
     , m_playerVelX(0.0f)
-    , m_playerVelY(0.0f) {
+    , m_playerVelY(0.0f)
+    , m_collisionCooldown(0.0f)
+    , m_pendingCombat(false)
+    , m_combatPlayer()  // Initialize to invalid entity (ID 0)
+    , m_combatEnemy() { // Initialize to invalid entity (ID 0)
 
     // Load configuration
     if (!m_gameConfig->LoadConfigs()) {
@@ -51,9 +58,28 @@ void PlayingState::OnEnter() {
     m_entityManager->AddSystem<MovementSystem>();
     auto* collisionSystem = m_entityManager->AddSystem<CollisionSystem>();
 
+    // Add animation system for sprite animations
+    auto* animationSystem = m_entityManager->AddSystem<AnimationSystem>();
+
+    // Add sprite render system for rendering animated sprites
+    std::cout << "🎨 DEBUG: Adding SpriteRenderSystem..." << std::endl;
+    auto* spriteRenderSystem = m_entityManager->AddSystem<SpriteRenderSystem>(GetRenderer());
+    if (spriteRenderSystem) {
+        spriteRenderSystem->SetScreenDimensions(m_gameConfig->GetScreenWidth(), m_gameConfig->GetScreenHeight());
+        std::cout << "✅ DEBUG: SpriteRenderSystem added successfully" << std::endl;
+    } else {
+        std::cout << "❌ ERROR: Failed to add SpriteRenderSystem!" << std::endl;
+    }
+
     // Set up collision callback for combat triggering
     collisionSystem->SetCollisionCallback([this](const CollisionInfo& info) {
         OnCollision(info);
+    });
+
+    // Set up animation event callback for gameplay integration
+    animationSystem->SetAnimationEventCallback([this](Entity entity, const std::string& animationName,
+                                                      const std::string& eventType, int frameIndex) {
+        OnAnimationEvent(entity, animationName, eventType, frameIndex);
     });
 
     // Initialize CharacterFactory now that EntityManager is ready
@@ -119,17 +145,105 @@ void PlayingState::Update(float deltaTime) {
         m_collisionCooldown -= deltaTime;
     }
 
-    // Update ECS
-    if (m_entityManager) {
-        m_entityManager->Update(deltaTime);
+    // Process pending combat (deferred from collision callback to avoid threading issues)
+    if (m_pendingCombat) {
+        std::cout << "🎯 Processing deferred combat in main thread" << std::endl;
 
-        // Update player animation based on movement
-        UpdatePlayerAnimation();
+        // Safety check: ensure combat entities are valid before processing
+        if (!m_combatPlayer.IsValid() || !m_combatEnemy.IsValid()) {
+            std::cerr << "Error: Invalid combat entities detected, skipping combat (Player: "
+                      << m_combatPlayer.GetID() << ", Enemy: " << m_combatEnemy.GetID() << ")" << std::endl;
+            m_pendingCombat = false;
+            return;
+        }
+
+        // Play collision sound (safe to do in main thread)
+        if (GetEngine()->GetAudioManager()) {
+            GetEngine()->GetAudioManager()->PlaySound("collision", m_gameConfig->GetCollisionSoundVolume());
+        }
+
+        // Trigger combat (safe to do in main thread)
+        TriggerCombat(m_combatPlayer, m_combatEnemy);
+
+        // Clear pending state
+        m_pendingCombat = false;
     }
 
-    // Update player position (simple movement system)
-    m_playerX += m_playerVelX * deltaTime;
-    m_playerY += m_playerVelY * deltaTime;
+    // Update ECS
+    if (m_entityManager) {
+        // Update player animation based on movement before ECS update
+        UpdatePlayerAnimation();
+
+        // Update camera for sprite render system
+        auto* spriteRenderSystem = m_entityManager->GetSystem<SpriteRenderSystem>();
+        if (spriteRenderSystem) {
+            spriteRenderSystem->SetCameraOffset(m_cameraX, 0.0f);
+        } else {
+            static int errorCount = 0;
+            if (errorCount < 5) { // Only show first 5 errors to avoid spam
+                std::cout << "⚠️  WARNING: SpriteRenderSystem not found in EntityManager!" << std::endl;
+                errorCount++;
+            }
+        }
+
+        m_entityManager->Update(deltaTime);
+    }
+
+
+
+    // TEMPORARY: Auto-test movement to verify sprite visibility
+    static float testTimer = 0.0f;
+    static int testPhase = 0;
+    testTimer += deltaTime;
+
+    if (testPhase == 0 && testTimer >= 2.0f) {
+        std::cout << "🧪 AUTO-MOVEMENT: Testing right movement" << std::endl;
+        m_playerVelX = m_gameConfig->GetPlayerMovementSpeed();
+        testPhase = 1;
+        testTimer = 0.0f;
+    } else if (testPhase == 1 && testTimer >= 3.0f) {
+        std::cout << "🧪 AUTO-MOVEMENT: Testing left movement" << std::endl;
+        m_playerVelX = -m_gameConfig->GetPlayerMovementSpeed();
+        testPhase = 2;
+        testTimer = 0.0f;
+    } else if (testPhase == 2 && testTimer >= 3.0f) {
+        std::cout << "🧪 AUTO-MOVEMENT: Stopping movement" << std::endl;
+        m_playerVelX = 0;
+        testPhase = 3;
+        testTimer = 0.0f;
+    }
+
+    // Sync simple movement variables to ECS VelocityComponent (FIX for movement issue)
+    if (m_player.IsValid() && m_entityManager) {
+        auto* velocity = m_entityManager->GetComponent<VelocityComponent>(m_player);
+        if (velocity) {
+            // Debug movement sync
+            if (m_playerVelX != 0 || m_playerVelY != 0) {
+                std::cout << "🏃 MOVEMENT: Setting velocity (" << m_playerVelX << ", " << m_playerVelY << ") to ECS" << std::endl;
+            }
+            velocity->vx = m_playerVelX;
+            velocity->vy = m_playerVelY;
+        } else {
+            std::cout << "❌ ERROR: Player has no VelocityComponent!" << std::endl;
+        }
+    }
+
+    // Let the ECS MovementSystem handle position updates
+    // Get updated position from ECS after MovementSystem processes it
+    if (m_player.IsValid() && m_entityManager) {
+        auto* transform = m_entityManager->GetComponent<TransformComponent>(m_player);
+        if (transform) {
+            float oldX = m_playerX;
+            float oldY = m_playerY;
+            m_playerX = transform->x;
+            m_playerY = transform->y;
+
+            // Debug position changes
+            if (oldX != m_playerX || oldY != m_playerY) {
+                std::cout << "📍 POSITION: Player moved from (" << oldX << ", " << oldY << ") to (" << m_playerX << ", " << m_playerY << ")" << std::endl;
+            }
+        }
+    }
 
     // Keep player within bounds
     float leftBoundary = m_cameraX + m_gameConfig->GetPlayerCameraLeftBoundary();
@@ -143,14 +257,7 @@ void PlayingState::Update(float deltaTime) {
         m_playerY = m_gameConfig->GetPlayerGroundLimit(); // Ground limit
     }
 
-    // Sync player position with ECS TransformComponent for collision detection
-    if (m_player.IsValid() && m_entityManager) {
-        auto* transform = m_entityManager->GetComponent<TransformComponent>(m_player);
-        if (transform) {
-            transform->x = m_playerX;
-            transform->y = m_playerY;
-        }
-    }
+    // Position sync is now handled above - ECS MovementSystem updates TransformComponent
 
     UpdateCamera();
     UpdateScore();
@@ -235,57 +342,14 @@ void PlayingState::Render() {
         }
     }
 
-    // Render player sprite with animation
+    // Player sprite rendering is now handled by SpriteRenderSystem
+    // Position is managed by ECS MovementSystem
+
+    // Optional: Draw fallback shapes if sprite system fails
     int spriteWidth = m_gameConfig->GetAnimationSpriteWidth();
     if (playerScreenX > -spriteWidth && playerScreenX < screenWidth + spriteWidth) {
-        // Animation logic
-        static float animationTimer = 0.0f;
-        static int currentFrame = 0;
-        static bool facingLeft = false;
-
-        float frameTime = m_gameConfig->GetApproximateFrameTime();
-        animationTimer += frameTime;
-
-        // Determine animation state and frame
-        float movementThreshold = m_gameConfig->GetPlayerMovementThreshold();
-        bool isMoving = (std::abs(m_playerVelX) > movementThreshold || std::abs(m_playerVelY) > movementThreshold);
-
-        if (isMoving) {
-            // Walking animation - cycle through frames
-            float frameDuration = m_gameConfig->GetAnimationFrameDuration();
-            if (animationTimer >= frameDuration) {
-                int totalFrames = m_gameConfig->GetAnimationTotalFrames();
-                currentFrame = (currentFrame + 1) % totalFrames;
-                animationTimer = 0.0f;
-            }
-
-            // Update facing direction based on horizontal movement
-            if (std::abs(m_playerVelX) > movementThreshold) {
-                facingLeft = (m_playerVelX < 0);
-            }
-        } else {
-            // Idle animation - stay on frame 0
-            currentFrame = 0;
-            animationTimer = 0.0f;
-        }
-
-        // Try to render sprite texture first
-        int spriteHeight = m_gameConfig->GetAnimationSpriteHeight();
-        int totalFrames = m_gameConfig->GetAnimationTotalFrames();
-        float spriteScale = m_gameConfig->GetAnimationSpriteScale();
-        SpriteFrame frame = SpriteRenderer::CreateFrame(currentFrame, spriteWidth, spriteHeight, totalFrames);
-        SpriteRenderer::RenderSprite(renderer, "assets/sprites/player/little_adventurer.png",
-                                   playerScreenX, playerScreenY, frame, facingLeft, spriteScale);
-
-        // If texture fails, the SpriteRenderer will show a magenta placeholder
-        // For a more detailed fallback, we can add simple shapes here
-        static bool textureExists = true;
+        // Check if we need fallback rendering
         auto texture = renderer->LoadTexture("assets/sprites/player/little_adventurer.png");
-        if (!texture && textureExists) {
-            textureExists = false;
-            std::cout << "Using simple shape rendering for player" << std::endl;
-        }
-
         if (!texture) {
             // Simple shape-based player character using config colors and dimensions
             Color bodyColor = m_gameConfig->GetPlayerBodyColor();
@@ -412,7 +476,7 @@ void PlayingState::HandleInput() {
         CreateConfigAwareCharacter("goblin", spawnX, spawnY, difficulty);
     }
     
-    // Player movement (using simple variables to bypass ECS corruption)
+    // Player movement (now properly synced with ECS)
     m_playerVelX = 0;
     m_playerVelY = 0;
 
@@ -421,9 +485,11 @@ void PlayingState::HandleInput() {
     // Horizontal movement
     if (input->IsKeyPressed(SDL_SCANCODE_LEFT) || input->IsKeyPressed(SDL_SCANCODE_A)) {
         m_playerVelX = -speed;
+        std::cout << "⬅️ INPUT: LEFT/A key pressed - velocity set to " << m_playerVelX << std::endl;
     }
     if (input->IsKeyPressed(SDL_SCANCODE_RIGHT) || input->IsKeyPressed(SDL_SCANCODE_D)) {
         m_playerVelX = speed;
+        std::cout << "➡️ INPUT: RIGHT/D key pressed - velocity set to " << m_playerVelX << std::endl;
     }
 
     // Vertical movement (constrained to ground level area)
@@ -444,6 +510,15 @@ void PlayingState::HandleInput() {
     if (input->IsKeyPressed(SDL_SCANCODE_DOWN) || input->IsKeyPressed(SDL_SCANCODE_S)) {
         if (m_playerY < groundLimit) { // Don't go below ground
             m_playerVelY = speed;
+        }
+    }
+
+    // Sync input-driven velocity to ECS VelocityComponent
+    if (m_player.IsValid() && m_entityManager) {
+        auto* velocity = m_entityManager->GetComponent<VelocityComponent>(m_player);
+        if (velocity) {
+            velocity->vx = m_playerVelX;
+            velocity->vy = m_playerVelY;
         }
     }
 
@@ -512,32 +587,109 @@ void PlayingState::CreatePlayer() {
 
     std::cout << "Created player entity with ID: " << m_player.GetID() << std::endl;
 
-    // Add transform component for ECS systems (required for collision detection)
-    auto* transform = m_entityManager->AddComponent<TransformComponent>(m_player, m_playerX, m_playerY);
-    std::cout << "DEBUG: Player TransformComponent added at (" << transform->x << ", " << transform->y << ")" << std::endl;
+    // Get or update existing transform component (CharacterFactory already created it)
+    auto* transform = m_entityManager->GetComponent<TransformComponent>(m_player);
+    if (transform) {
+        // Update existing transform to correct position
+        transform->x = m_playerX;
+        transform->y = m_playerY;
+        std::cout << "DEBUG: Updated existing TransformComponent to (" << transform->x << ", " << transform->y << ")" << std::endl;
+    } else {
+        // This shouldn't happen since CharacterFactory should create it
+        std::cerr << "ERROR: Player has no TransformComponent from CharacterFactory!" << std::endl;
+        transform = m_entityManager->AddComponent<TransformComponent>(m_player, m_playerX, m_playerY);
+        std::cout << "DEBUG: Added new TransformComponent at (" << transform->x << ", " << transform->y << ")" << std::endl;
+    }
 
-    // Add audio component for jump sound
-    auto* audio = m_entityManager->AddComponent<AudioComponent>(m_player, "jump", m_gameConfig->GetJumpSoundVolume(), false, false, false);
+    // Update existing sprite component for animated rendering (CharacterFactory already created it)
+    int spriteWidth = m_gameConfig->GetAnimationSpriteWidth();
+    int spriteHeight = m_gameConfig->GetAnimationSpriteHeight();
+    float spriteScale = m_gameConfig->GetAnimationSpriteScale();
 
-    // Add collision component for combat triggering
-    auto* collision = m_entityManager->AddComponent<CollisionComponent>(m_player, 32.0f, 48.0f);
+    auto* sprite = m_entityManager->GetComponent<SpriteComponent>(m_player);
+    if (sprite) {
+        std::cout << "✅ DEBUG: Found existing SpriteComponent for player entity " << m_player.GetID() << std::endl;
+        std::cout << "🎨 DEBUG: Sprite path: '" << sprite->texturePath << "', visible: " << sprite->visible << std::endl;
+        std::cout << "📏 DEBUG: Sprite dimensions: " << sprite->width << "x" << sprite->height << ", scale: " << sprite->scaleX << "x" << sprite->scaleY << std::endl;
 
-    // Add character type component to identify as player
-    auto* charType = m_entityManager->AddComponent<CharacterTypeComponent>(m_player,
-        CharacterTypeComponent::CharacterType::PLAYER,
-        CharacterTypeComponent::CharacterClass::WARRIOR,
-        "Player");
+        // Force correct sprite path if it's wrong
+        if (sprite->texturePath != "assets/sprites/player/little_adventurer.png") {
+            std::cout << "🔧 FIXING: Correcting sprite path from '" << sprite->texturePath << "'" << std::endl;
+            sprite->texturePath = "assets/sprites/player/little_adventurer.png";
+            sprite->visible = true;
+            std::cout << "✅ FIXED: Sprite path now: '" << sprite->texturePath << "', visible: " << sprite->visible << std::endl;
+        }
 
-    std::cout << "DEBUG: Added CharacterTypeComponent to player - type: " << static_cast<int>(charType->type) << std::endl;
+        // Fix sprite scale - make it much larger so it's visible
+        if (sprite->scaleX < 2.0f || sprite->scaleY < 2.0f) {
+            std::cout << "🔧 FIXING: Sprite too small (" << sprite->scaleX << "x" << sprite->scaleY << "), increasing scale" << std::endl;
+            sprite->scaleX = 4.0f;  // Make it 4x larger
+            sprite->scaleY = 4.0f;
+            std::cout << "✅ FIXED: Sprite scale now: " << sprite->scaleX << "x" << sprite->scaleY << std::endl;
+        }
 
-    // Add health component
-    auto* health = m_entityManager->AddComponent<HealthComponent>(m_player, 100.0f);
+        // Verify file exists
+        std::ifstream file(sprite->texturePath);
+        if (file.good()) {
+            std::cout << "📁 FILE CHECK: Sprite file exists at '" << sprite->texturePath << "'" << std::endl;
+        } else {
+            std::cout << "❌ FILE CHECK: Sprite file NOT FOUND at '" << sprite->texturePath << "'" << std::endl;
+        }
+    } else {
+        std::cout << "❌ ERROR: Player entity doesn't have SpriteComponent from CharacterFactory!" << std::endl;
+    }
 
-    // Add combat stats component
-    auto* combatStats = m_entityManager->AddComponent<CombatStatsComponent>(m_player);
-    combatStats->attackPower = m_gameConfig->GetBaseAttackDamage();
-    combatStats->defense = m_gameConfig->GetBaseDefense();
-    combatStats->speed = m_gameConfig->GetBaseSpeed();
+    std::cout << "🔧 DEBUG: Finished checking SpriteComponent, about to update other components..." << std::endl;
+
+    // CharacterFactory already added all necessary components, just update them if needed
+    std::cout << "🔧 DEBUG: About to update CollisionComponent..." << std::endl;
+
+    // Update collision component size if it exists
+    auto* collision = m_entityManager->GetComponent<CollisionComponent>(m_player);
+    if (collision) {
+        collision->width = 32.0f;
+        collision->height = 48.0f;
+        std::cout << "✅ DEBUG: Updated CollisionComponent size" << std::endl;
+    } else {
+        std::cout << "❌ DEBUG: No CollisionComponent found" << std::endl;
+    }
+
+    std::cout << "🔧 DEBUG: About to update CombatStatsComponent..." << std::endl;
+
+    // Update combat stats if they exist
+    auto* combatStats = m_entityManager->GetComponent<CombatStatsComponent>(m_player);
+    if (combatStats) {
+        combatStats->attackPower = m_gameConfig->GetBaseAttackDamage();
+        combatStats->defense = m_gameConfig->GetBaseDefense();
+        combatStats->speed = m_gameConfig->GetBaseSpeed();
+        std::cout << "✅ DEBUG: Updated CombatStatsComponent" << std::endl;
+    } else {
+        std::cout << "❌ DEBUG: No CombatStatsComponent found" << std::endl;
+    }
+
+    std::cout << "🔧 DEBUG: Finished CreatePlayer function" << std::endl;
+
+    // // Add animation component with player animations
+    // auto* animComp = m_entityManager->AddComponent<AnimationComponent>(m_player);
+    // auto playerAnimations = AnimationFactory::CreatePlayerAnimations(spriteWidth, spriteHeight,
+    //                                                                  m_gameConfig->GetAnimationFrameDuration());
+    //
+    // // Use traditional iterator approach instead of structured binding to avoid C++17 issues
+    // std::cout << "🎬 DEBUG: Copying " << playerAnimations.size() << " animations to AnimationComponent..." << std::endl;
+    // for (auto it = playerAnimations.begin(); it != playerAnimations.end(); ++it) {
+    //     const std::string& name = it->first;
+    //     const Animation& anim = it->second;
+    //     std::cout << "🎬 DEBUG: Copying animation '" << name << "' with " << anim.frames.size() << " frames" << std::endl;
+    //     animComp->animations[name] = anim;
+    //     std::cout << "🎬 DEBUG: Successfully copied animation '" << name << "'" << std::endl;
+    // }
+    // std::cout << "🎬 DEBUG: All animations copied successfully" << std::endl;
+
+    // // Create animation state machine and start with idle
+    // auto* animSystem = m_entityManager->GetSystem<AnimationSystem>();
+    // if (animSystem) {
+    //     animSystem->CreateAnimationStateMachine(m_player, AnimationState::IDLE);
+    // }
 
     // Using direct sprite rendering for better control in arcade games
     // This approach gives us precise control over animation and rendering
@@ -558,6 +710,8 @@ void PlayingState::CreateEnemies() {
     float velocityVariation = m_gameConfig->GetEnemyVelocityVariation();
     float verticalMovementRange = m_gameConfig->GetEnemyVerticalMovementRange();
 
+
+
     for (int i = 0; i < enemyCount; i++) {
         Entity enemy = m_entityManager->CreateEntity();
         float x = spawnStartX + i * spawnSpacingX; // Spread enemies across a wider area
@@ -577,8 +731,6 @@ void PlayingState::CreateEnemies() {
         auto* transform = m_entityManager->AddComponent<TransformComponent>(enemy, x, y);
         auto* velocity = m_entityManager->AddComponent<VelocityComponent>(enemy, velocityX, velocityY);
 
-        std::cout << "DEBUG: Enemy " << i << " TransformComponent added at (" << transform->x << ", " << transform->y << ")" << std::endl;
-
         // Vary enemy colors using config
         int colorVariant = i % 3;
         Color enemyColor;
@@ -593,10 +745,12 @@ void PlayingState::CreateEnemies() {
         auto* render = m_entityManager->AddComponent<RenderComponent>(enemy, enemyWidth, enemyHeight,
                                                      enemyColor.r, enemyColor.g, enemyColor.b);
         auto* audio = m_entityManager->AddComponent<AudioComponent>(enemy, "collision", m_gameConfig->GetCollisionSoundVolume(), false, false, true); // Collision sound
+        (void)audio; // Suppress unused variable warning
 
         // Add collision component for combat triggering
         auto* collision = m_entityManager->AddComponent<CollisionComponent>(enemy,
             static_cast<float>(enemyWidth), static_cast<float>(enemyHeight));
+        (void)collision; // Suppress unused variable warning
 
         // Add character type component to identify as enemy
         auto* charType = m_entityManager->AddComponent<CharacterTypeComponent>(enemy,
@@ -608,6 +762,7 @@ void PlayingState::CreateEnemies() {
 
         // Add health component
         auto* health = m_entityManager->AddComponent<HealthComponent>(enemy, 50.0f);
+        (void)health; // Suppress unused variable warning
 
         // Add combat stats component
         auto* combatStats = m_entityManager->AddComponent<CombatStatsComponent>(enemy);
@@ -830,9 +985,65 @@ void PlayingState::UpdateScore() {
 }
 
 void PlayingState::UpdatePlayerAnimation() {
-    // Animation is handled directly in the Render() method
-    // This keeps the animation logic close to the rendering code
-    // for better maintainability in arcade games
+    // Update player animation state based on movement
+    if (!m_player.IsValid() || !m_entityManager) return;
+
+    auto* animSystem = m_entityManager->GetSystem<AnimationSystem>();
+    if (!animSystem) return;
+
+    // Determine animation state based on player velocity
+    float movementThreshold = m_gameConfig->GetPlayerMovementThreshold();
+    bool isMoving = (std::abs(m_playerVelX) > movementThreshold || std::abs(m_playerVelY) > movementThreshold);
+
+    AnimationState currentState = animSystem->GetCurrentState(m_player);
+    AnimationState newState = currentState;
+
+    if (isMoving) {
+        // Check if jumping/falling
+        if (std::abs(m_playerVelY) > movementThreshold) {
+            newState = (m_playerVelY < 0) ? AnimationState::JUMPING : AnimationState::FALLING;
+        } else {
+            // Walking horizontally
+            newState = AnimationState::WALKING;
+        }
+    } else {
+        // Not moving - idle
+        newState = AnimationState::IDLE;
+    }
+
+    // Transition to new state if different
+    if (newState != currentState) {
+        animSystem->TransitionToState(m_player, newState);
+    }
+
+    // Update sprite flipping based on horizontal movement
+    auto* sprite = m_entityManager->GetComponent<SpriteComponent>(m_player);
+    if (sprite && std::abs(m_playerVelX) > movementThreshold) {
+        sprite->flipHorizontal = (m_playerVelX < 0);
+    }
+}
+
+void PlayingState::OnAnimationEvent(Entity entity, const std::string& animationName,
+                                   const std::string& eventType, int frameIndex) {
+    // Handle animation events for gameplay integration
+    (void)frameIndex; // Suppress unused parameter warning
+
+    if (entity == m_player) {
+        if (eventType == "start") {
+            std::cout << "Player started animation: " << animationName << std::endl;
+        } else if (eventType == "end") {
+            std::cout << "Player finished animation: " << animationName << std::endl;
+
+            // Handle non-looping animations
+            if (animationName == "attack" || animationName == "hurt") {
+                // Return to idle after attack or hurt animation
+                auto* animSystem = m_entityManager->GetSystem<AnimationSystem>();
+                if (animSystem) {
+                    animSystem->TransitionToState(m_player, AnimationState::IDLE);
+                }
+            }
+        }
+    }
 }
 
 void PlayingState::ResetGameState() {
@@ -937,25 +1148,26 @@ void PlayingState::OnCollision(const CollisionInfo& info) {
         return;
     }
 
-    // TEMPORARY FIX: Use entity IDs instead of corrupted CharacterTypeComponent
-    // Entity 1 is always the player, entities 2-9 are enemies
+    // Check if this is a player-enemy collision using actual player entity
     Entity player, enemy;
     bool isPlayerEnemyCollision = false;
 
-    if (info.entityA.GetID() == 1 && info.entityB.GetID() >= 2 && info.entityB.GetID() <= 9) {
-        // Entity A is player, Entity B is enemy
+    uint32_t playerID = m_player.GetID();
+
+    if (info.entityA.GetID() == playerID) {
+        // Entity A is player, Entity B might be enemy
         player = info.entityA;
         enemy = info.entityB;
         isPlayerEnemyCollision = true;
-        std::cout << "Player-Enemy collision detected (A=Player, B=Enemy)" << std::endl;
-    } else if (info.entityB.GetID() == 1 && info.entityA.GetID() >= 2 && info.entityA.GetID() <= 9) {
-        // Entity B is player, Entity A is enemy
+        std::cout << "Player-Enemy collision detected (A=Player:" << playerID << ", B=Enemy:" << enemy.GetID() << ")" << std::endl;
+    } else if (info.entityB.GetID() == playerID) {
+        // Entity B is player, Entity A might be enemy
         player = info.entityB;
         enemy = info.entityA;
         isPlayerEnemyCollision = true;
-        std::cout << "Player-Enemy collision detected (A=Enemy, B=Player)" << std::endl;
+        std::cout << "Player-Enemy collision detected (A=Enemy:" << enemy.GetID() << ", B=Player:" << playerID << ")" << std::endl;
     } else {
-        std::cout << "Not a player-enemy collision (IDs: " << info.entityA.GetID() << ", " << info.entityB.GetID() << ")" << std::endl;
+        std::cout << "Not a player-enemy collision (IDs: " << info.entityA.GetID() << ", " << info.entityB.GetID() << ", Player:" << playerID << ")" << std::endl;
     }
 
     if (isPlayerEnemyCollision) {
@@ -964,17 +1176,24 @@ void PlayingState::OnCollision(const CollisionInfo& info) {
         // Set collision cooldown to prevent immediate re-triggering
         m_collisionCooldown = COLLISION_COOLDOWN_TIME;
 
-        // Play collision sound
-        if (GetEngine()->GetAudioManager()) {
-            GetEngine()->GetAudioManager()->PlaySound("collision", m_gameConfig->GetCollisionSoundVolume());
-        }
+        // DEFER audio and state operations to main thread to avoid macOS threading issues
+        // Store the combat trigger for processing in the main Update loop
+        m_pendingCombat = true;
+        m_combatPlayer = player;
+        m_combatEnemy = enemy;
 
-        // Trigger combat
-        TriggerCombat(player, enemy);
+        std::cout << "🎯 Combat deferred to main thread to avoid threading issues" << std::endl;
     }
 }
 
 void PlayingState::TriggerCombat(Entity player, Entity enemy) {
+    // Safety check: ensure entities are valid
+    if (!player.IsValid() || !enemy.IsValid()) {
+        std::cerr << "Error: Cannot trigger combat with invalid entities (Player: "
+                  << player.GetID() << ", Enemy: " << enemy.GetID() << ")" << std::endl;
+        return;
+    }
+
     // Store current player position for return after combat
     float returnX = m_playerX;
     float returnY = m_playerY;

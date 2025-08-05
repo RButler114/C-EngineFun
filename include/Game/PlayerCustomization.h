@@ -89,7 +89,7 @@ struct PlayerCustomization {
     std::string startingArmor = "leather";
     
     // Sprite customization
-    std::string spritePath = "little_adventurer.png";
+    std::string spritePath = "assets/sprites/player/little_adventurer.png";
     
     /**
      * @brief Reset to default values
@@ -108,7 +108,7 @@ struct PlayerCustomization {
         availablePoints = 0;
         startingWeapon = "sword";
         startingArmor = "leather";
-        spritePath = "little_adventurer.png";
+        spritePath = "assets/sprites/player/little_adventurer.png";
     }
     
     /**

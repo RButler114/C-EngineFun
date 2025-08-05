@@ -25,7 +25,14 @@ bool EntityManager::IsEntityValid(Entity entity) const {
 void EntityManager::Update(float deltaTime) {
     // Process entity destruction
     ProcessEntityDestruction();
-    
+
+    // Debug: Print system count every 300 frames
+    static int frameCount = 0;
+    frameCount++;
+    if (frameCount % 300 == 0) {
+        std::cout << "🔧 EntityManager: Updating " << m_systems.size() << " systems" << std::endl;
+    }
+
     // Update all systems
     for (auto& system : m_systems) {
         system->Update(deltaTime);

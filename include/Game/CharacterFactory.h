@@ -268,7 +268,7 @@ private:
         player.agility = 12.0f;
         player.intelligence = 10.0f;
         player.vitality = 15.0f;
-        player.spritePath = "little_adventurer.png";
+        player.spritePath = "assets/sprites/player/little_adventurer.png";
         player.spriteWidth = 18;
         player.spriteHeight = 48;
         player.hasAI = false;

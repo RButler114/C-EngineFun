@@ -48,3 +48,5 @@
 
 // Animation support
 #include "AnimationComponent.h"
+#include "AnimationSystem.h"
+#include "SpriteRenderSystem.h"

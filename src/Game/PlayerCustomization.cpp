@@ -103,11 +103,11 @@ void CustomizationManager::ApplyCustomizationToPlayerData() {
     // Update sprite path based on appearance choices
     // For now, we'll use a simple mapping
     if (m_playerCustomization.characterClass == "warrior") {
-        m_playerCustomization.spritePath = "little_adventurer.png";
+        m_playerCustomization.spritePath = "assets/sprites/player/little_adventurer.png";
     } else if (m_playerCustomization.characterClass == "archer") {
-        m_playerCustomization.spritePath = "archer_sprite.png";
+        m_playerCustomization.spritePath = "assets/sprites/player/archer_sprite.png";
     } else if (m_playerCustomization.characterClass == "mage") {
-        m_playerCustomization.spritePath = "mage_sprite.png";
+        m_playerCustomization.spritePath = "assets/sprites/player/mage_sprite.png";
     }
     
     std::cout << "Applied customization: " << m_playerCustomization.playerName 

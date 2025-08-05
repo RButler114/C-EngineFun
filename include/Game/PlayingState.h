@@ -37,6 +37,11 @@ private:
     // Collision cooldown to prevent immediate re-triggering
     float m_collisionCooldown;
     static constexpr float COLLISION_COOLDOWN_TIME = 1.0f; // 1 second cooldown
+
+    // Pending combat state (to avoid threading issues on macOS)
+    bool m_pendingCombat;
+    Entity m_combatPlayer;
+    Entity m_combatEnemy;
     
     void CreatePlayer();
     void CreateEnemies();
@@ -52,4 +57,8 @@ private:
     // Combat integration
     void OnCollision(const CollisionInfo& info);
     void TriggerCombat(Entity player, Entity enemy);
+
+    // Animation integration
+    void OnAnimationEvent(Entity entity, const std::string& animationName,
+                         const std::string& eventType, int frameIndex);
 };

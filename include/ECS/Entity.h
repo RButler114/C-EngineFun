@@ -8,6 +8,8 @@
 #pragma once
 
 #include <cstdint>
+#include <typeindex>
+#include <functional>
 
 /// Type alias for entity identifiers
 using EntityID = std::uint32_t;
@@ -85,11 +87,11 @@ private:
 };
 
 /**
- * @brief Generate unique component type IDs at compile time
+ * @brief Generate unique component type IDs using type_index
  *
  * This template function generates a unique ComponentTypeID for each
- * component type T. The ID is generated once per type and cached
- * using static variables.
+ * component type T using std::type_index for guaranteed uniqueness
+ * across compilation units.
  *
  * @tparam T The component type
  * @return Unique ComponentTypeID for type T
@@ -103,9 +105,7 @@ private:
  */
 template<typename T>
 ComponentTypeID GetComponentTypeID() {
-    static ComponentTypeID typeID = []() {
-        static ComponentTypeID counter = 0;
-        return ++counter;
-    }();
+    // Use type_index hash for guaranteed unique IDs across compilation units
+    static ComponentTypeID typeID = std::hash<std::type_index>{}(std::type_index(typeid(T)));
     return typeID;
 }

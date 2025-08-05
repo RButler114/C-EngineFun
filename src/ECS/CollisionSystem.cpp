@@ -15,38 +15,74 @@ void CollisionSystem::Update(float deltaTime) {
         std::cout << "CollisionSystem: Found " << entities.size() << " entities with collision components" << std::endl;
     }
 
-    // Check all pairs of entities for collision
+    // Check all pairs of entities for collision with safety checks
     for (size_t i = 0; i < entities.size(); ++i) {
         for (size_t j = i + 1; j < entities.size(); ++j) {
-            CheckCollision(entities[i], entities[j]);
+            // Safety check: ensure indices are valid
+            if (i >= entities.size() || j >= entities.size()) {
+                std::cout << "ERROR: Invalid collision indices i=" << i << ", j=" << j << ", size=" << entities.size() << std::endl;
+                continue;
+            }
+
+            // Safety check: ensure entities are valid
+            Entity entityA = entities[i];
+            Entity entityB = entities[j];
+            if (entityA.GetID() == 0 || entityB.GetID() == 0) {
+                std::cout << "ERROR: Invalid entity IDs A=" << entityA.GetID() << ", B=" << entityB.GetID() << std::endl;
+                continue;
+            }
+
+            CheckCollision(entityA, entityB);
         }
     }
 }
 
 void CollisionSystem::CheckCollision(Entity entityA, Entity entityB) {
+    // Safety check: ensure EntityManager is valid
+    if (!m_entityManager) {
+        std::cout << "ERROR: EntityManager is null in CheckCollision" << std::endl;
+        return;
+    }
+
+    // Safety check: ensure entities are different
+    if (entityA.GetID() == entityB.GetID()) {
+        std::cout << "ERROR: Attempting to check collision between same entity " << entityA.GetID() << std::endl;
+        return;
+    }
+
     auto* transformA = m_entityManager->GetComponent<TransformComponent>(entityA);
     auto* collisionA = m_entityManager->GetComponent<CollisionComponent>(entityA);
     auto* transformB = m_entityManager->GetComponent<TransformComponent>(entityB);
     auto* collisionB = m_entityManager->GetComponent<CollisionComponent>(entityB);
 
     if (!transformA || !collisionA || !transformB || !collisionB) {
-        // Debug: Show which components are missing
-        if (!transformA) std::cout << "Entity " << entityA.GetID() << " missing TransformComponent" << std::endl;
-        if (!collisionA) std::cout << "Entity " << entityA.GetID() << " missing CollisionComponent" << std::endl;
-        if (!transformB) std::cout << "Entity " << entityB.GetID() << " missing TransformComponent" << std::endl;
-        if (!collisionB) std::cout << "Entity " << entityB.GetID() << " missing CollisionComponent" << std::endl;
+        // Debug: Show which components are missing (reduced frequency to avoid spam)
+        static int missingComponentCount = 0;
+        if (missingComponentCount < 10) {
+            if (!transformA) std::cout << "Entity " << entityA.GetID() << " missing TransformComponent" << std::endl;
+            if (!collisionA) std::cout << "Entity " << entityA.GetID() << " missing CollisionComponent" << std::endl;
+            if (!transformB) std::cout << "Entity " << entityB.GetID() << " missing TransformComponent" << std::endl;
+            if (!collisionB) std::cout << "Entity " << entityB.GetID() << " missing CollisionComponent" << std::endl;
+            missingComponentCount++;
+        }
         return;
     }
     
     float overlapX, overlapY;
     if (AABB(transformA, collisionA, transformB, collisionB, overlapX, overlapY)) {
         if (m_collisionCallback) {
-            CollisionInfo info;
-            info.entityA = entityA;
-            info.entityB = entityB;
-            info.overlapX = overlapX;
-            info.overlapY = overlapY;
-            m_collisionCallback(info);
+            try {
+                CollisionInfo info;
+                info.entityA = entityA;
+                info.entityB = entityB;
+                info.overlapX = overlapX;
+                info.overlapY = overlapY;
+                m_collisionCallback(info);
+            } catch (const std::exception& e) {
+                std::cout << "ERROR: Exception in collision callback: " << e.what() << std::endl;
+            } catch (...) {
+                std::cout << "ERROR: Unknown exception in collision callback" << std::endl;
+            }
         }
     }
 }

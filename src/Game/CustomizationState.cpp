@@ -61,6 +61,16 @@ void CustomizationState::OnExit() {
 }
 
 void CustomizationState::Update(float deltaTime) {
+    // TEMPORARY: Auto-progress for debugging
+    static float autoTimer = 0.0f;
+    autoTimer += deltaTime;
+    if (autoTimer >= 2.0f) {
+        std::cout << "🧪 DEBUG: Auto-starting game to test sprite and movement" << std::endl;
+        StartGame();
+        autoTimer = 0.0f;
+        return;
+    }
+
     // Update based on current UI mode
     switch (m_currentMode) {
         case UIMode::CATEGORY_SELECTION:

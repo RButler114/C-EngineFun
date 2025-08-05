@@ -41,6 +41,16 @@ void MenuState::OnExit() {
 }
 
 void MenuState::Update(float deltaTime) {
+    // TEMPORARY: Auto-progress for debugging
+    static float autoTimer = 0.0f;
+    autoTimer += deltaTime;
+    if (autoTimer >= 3.0f) {
+        std::cout << "🧪 DEBUG: Auto-progressing to test sprite and movement" << std::endl;
+        SelectOption();
+        autoTimer = 0.0f;
+        return;
+    }
+
     HandleInput(); // Handle user input
 
     // Update selection blink effect
@@ -50,7 +60,7 @@ void MenuState::Update(float deltaTime) {
         m_blinkTimer = 0.0f;
     }
 
-    // Auto-start removed - use manual input (ENTER key) to start game
+
 }
 
 void MenuState::Render() {
@@ -96,14 +106,30 @@ void MenuState::HandleInput() {
         NavigateDown();
     }
 
-    // Selection - using IsKeyPressed with debouncing since IsKeyJustPressed has issues
+    // Selection - try both methods for better reliability
     static bool enterWasPressed = false;
     static bool spaceWasPressed = false;
+    static float debugTimer2 = 0.0f;
 
     bool enterPressed = input->IsKeyPressed(SDL_SCANCODE_RETURN);
     bool spacePressed = input->IsKeyPressed(SDL_SCANCODE_SPACE);
 
-    if ((enterPressed && !enterWasPressed) || (spacePressed && !spaceWasPressed)) {
+    // Also try IsKeyJustPressed as backup
+    bool enterJustPressed = input->IsKeyJustPressed(SDL_SCANCODE_RETURN);
+    bool spaceJustPressed = input->IsKeyJustPressed(SDL_SCANCODE_SPACE);
+
+    // Debug input detection
+    debugTimer2 += 0.016f;
+    if (debugTimer2 >= 2.0f) {
+        if (enterPressed || spacePressed || enterJustPressed || spaceJustPressed) {
+            std::cout << "🔍 INPUT DEBUG: Enter=" << enterPressed << " Space=" << spacePressed
+                      << " EnterJust=" << enterJustPressed << " SpaceJust=" << spaceJustPressed << std::endl;
+        }
+        debugTimer2 = 0.0f;
+    }
+
+    if ((enterPressed && !enterWasPressed) || (spacePressed && !spaceWasPressed) ||
+        enterJustPressed || spaceJustPressed) {
         std::cout << "ENTER/SPACE key pressed!" << std::endl;
         SelectOption();
     }

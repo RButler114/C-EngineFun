@@ -191,6 +191,41 @@ struct SpriteComponent : public Component {
      */
     SpriteComponent() : texturePath("") {
         // texturePath is now initialized as empty string
+        visible = true;
+    }
+
+    /**
+     * @brief Copy constructor
+     */
+    SpriteComponent(const SpriteComponent& other)
+        : Component(other), texturePath(other.texturePath), width(other.width), height(other.height),
+          frameX(other.frameX), frameY(other.frameY), frameWidth(other.frameWidth), frameHeight(other.frameHeight),
+          scaleX(other.scaleX), scaleY(other.scaleY), visible(other.visible),
+          flipHorizontal(other.flipHorizontal), flipVertical(other.flipVertical) {
+        std::cout << "🎨 SpriteComponent copy constructor: path='" << texturePath << "'" << std::endl;
+    }
+
+    /**
+     * @brief Assignment operator
+     */
+    SpriteComponent& operator=(const SpriteComponent& other) {
+        if (this != &other) {
+            Component::operator=(other);
+            texturePath = other.texturePath;
+            width = other.width;
+            height = other.height;
+            frameX = other.frameX;
+            frameY = other.frameY;
+            frameWidth = other.frameWidth;
+            frameHeight = other.frameHeight;
+            scaleX = other.scaleX;
+            scaleY = other.scaleY;
+            visible = other.visible;
+            flipHorizontal = other.flipHorizontal;
+            flipVertical = other.flipVertical;
+            std::cout << "🎨 SpriteComponent assignment: path='" << texturePath << "'" << std::endl;
+        }
+        return *this;
     }
 
     /**
@@ -201,7 +236,9 @@ struct SpriteComponent : public Component {
      */
     SpriteComponent(const std::string& path, int w, int h)
         : Component(), texturePath(path), width(w), height(h), frameWidth(w), frameHeight(h) {
-        // texturePath is now initialized in the initializer list
+        // Ensure string is properly copied and visible is set to true
+        visible = true;
+        std::cout << "🎨 SpriteComponent constructor: path='" << texturePath << "', visible=" << visible << std::endl;
     }
 
     /**
