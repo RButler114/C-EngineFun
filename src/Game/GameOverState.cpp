@@ -1,3 +1,10 @@
+/**
+ * @file GameOverState.cpp
+ * @brief Implementation of game over screen with score display and restart options
+ * @author Ryan Butler
+ * @date 2025
+ */
+
 #include "Game/GameOverState.h"
 #include "Game/GameStateManager.h"
 #include "Engine/Renderer.h"
@@ -6,31 +13,79 @@
 #include "Engine/BitmapFont.h"
 #include <iostream>
 
+/**
+ * @brief Constructor - initializes game over state with default values
+ *
+ * Sets up the game over state with:
+ * - Zero final score (will be set by calling state)
+ * - Reset display timer for animation sequence
+ * - Hidden restart prompt initially
+ *
+ * @note Score should be set via SetScore() before transitioning to this state
+ */
 GameOverState::GameOverState()
     : GameState(GameStateType::GAME_OVER, "GameOver")
-    , m_finalScore(0)
-    , m_displayTimer(0.0f)
-    , m_showRestartPrompt(false) {
+    , m_finalScore(0)           // Will be set by previous state
+    , m_displayTimer(0.0f)      // Controls animation timing
+    , m_showRestartPrompt(false) // Hidden until timer expires
+{
 }
 
+/**
+ * @brief Initialize game over screen when becoming active
+ *
+ * Called when transitioning to game over state. Resets all timing
+ * and display variables to ensure consistent presentation.
+ *
+ * @note Final score should already be set via SetScore() before this
+ * @note Display sequence: Game Over message → Score → Restart options
+ */
 void GameOverState::OnEnter() {
-    std::cout << "Entering Game Over State" << std::endl;
-    m_displayTimer = 0.0f;
-    m_showRestartPrompt = false;
+    std::cout << "💀 Game Over - Final Score: " << m_finalScore << std::endl;
+
+    // Reset animation timing for consistent presentation
+    m_displayTimer = 0.0f;      // Start timing sequence from beginning
+    m_showRestartPrompt = false; // Hide restart options initially
+
+    // TODO: Play game over sound effect here
+    // if (GetEngine()->GetAudioManager()) {
+    //     GetEngine()->GetAudioManager()->PlaySound("game_over");
+    // }
 }
 
+/**
+ * @brief Clean up when leaving game over state
+ *
+ * Called when transitioning away from game over state.
+ * Currently minimal cleanup needed.
+ */
 void GameOverState::OnExit() {
-    std::cout << "Exiting Game Over State" << std::endl;
+    std::cout << "🔄 Leaving Game Over screen" << std::endl;
 }
 
+/**
+ * @brief Update game over screen timing and animations
+ *
+ * Controls the display sequence timing:
+ * - 0-2 seconds: Show "GAME OVER" and score
+ * - 2+ seconds: Show restart prompt and accept input
+ *
+ * @param deltaTime Time elapsed since last frame in seconds
+ *
+ * @note Input is processed every frame but only acts after prompt appears
+ * @note Display timer accumulates to control animation sequence
+ */
 void GameOverState::Update(float deltaTime) {
+    // Accumulate time for controlling display sequence
     m_displayTimer += deltaTime;
-    
-    // Show restart prompt after 2 seconds
+
+    // Show restart prompt after 2 seconds of displaying score
+    // This gives players time to see their final score before showing options
     if (m_displayTimer > 2.0f) {
         m_showRestartPrompt = true;
     }
-    
+
+    // Process input every frame (but HandleInput checks if prompt is visible)
     HandleInput();
 }
 

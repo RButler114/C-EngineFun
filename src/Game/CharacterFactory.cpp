@@ -9,22 +9,64 @@
 #include "Game/PlayerCustomization.h"
 #include <iostream>
 
+/**
+ * @brief Create a player character with custom attributes and appearance
+ *
+ * Creates a player entity using the base player template combined with
+ * player-selected customizations. This allows players to personalize
+ * their character's stats, appearance, and class before starting the game.
+ *
+ * @param x Starting X position in world coordinates
+ * @param y Starting Y position in world coordinates
+ * @param customization Player customization data (name, class, stats, appearance)
+ *
+ * @return Entity handle for the created player character
+ *
+ * @note Combines base template with customization overrides
+ * @note Health is calculated based on vitality attribute
+ * @note Character class affects available abilities and stats
+ * @note Sprite path can be customized for different character appearances
+ *
+ * Customization Process:
+ * 1. Load base player template from configuration
+ * 2. Apply player-selected name and class
+ * 3. Override attributes with custom values
+ * 4. Set custom sprite path for appearance
+ * 5. Calculate derived stats (health from vitality)
+ * 6. Create entity using the customized template
+ *
+ * @example
+ * ```cpp
+ * PlayerCustomization custom;
+ * custom.playerName = "Hero";
+ * custom.characterClass = "mage";
+ * custom.intelligence = 15; // High intelligence for mage
+ * custom.spritePath = "assets/sprites/mage_blue.png";
+ *
+ * Entity player = factory.CreateCustomizedPlayer(100.0f, 200.0f, custom);
+ * ```
+ */
 Entity CharacterFactory::CreateCustomizedPlayer(float x, float y, const PlayerCustomization& customization) {
-    // Start with the base player template
+    // Step 1: Start with the base player template from configuration
     CharacterTemplate playerTemplate;
     auto it = m_templates.find("player");
     if (it != m_templates.end()) {
+        // Use configured player template as base
         playerTemplate = it->second;
+        std::cout << "📋 Using configured player template" << std::endl;
     } else {
-        // Use default player template if not found
-        playerTemplate = CharacterTemplate("Player", CharacterTypeComponent::CharacterType::PLAYER, 
+        // Fallback: Create default player template if config not found
+        playerTemplate = CharacterTemplate("Player", CharacterTypeComponent::CharacterType::PLAYER,
                                           CharacterTypeComponent::CharacterClass::WARRIOR);
+        std::cout << "⚠️  Using default player template (config not found)" << std::endl;
     }
-    
-    // Apply customizations to the template
+
+    // Step 2: Apply player customizations to the template
     playerTemplate.name = customization.playerName;
-    
-    // Map character class string to enum
+
+    // Step 3: Map character class string to enum value
+    // This allows the customization system to use string names while
+    // the ECS system uses efficient enum values
     if (customization.characterClass == "warrior") {
         playerTemplate.characterClass = CharacterTypeComponent::CharacterClass::WARRIOR;
     } else if (customization.characterClass == "archer") {
@@ -34,23 +76,25 @@ Entity CharacterFactory::CreateCustomizedPlayer(float x, float y, const PlayerCu
     } else if (customization.characterClass == "rogue") {
         playerTemplate.characterClass = CharacterTypeComponent::CharacterClass::ROGUE;
     }
-    
-    // Apply attribute customizations
+
+    // Step 4: Apply custom attribute values
+    // These override the base template values with player choices
     playerTemplate.strength = customization.strength;
     playerTemplate.agility = customization.agility;
     playerTemplate.intelligence = customization.intelligence;
     playerTemplate.vitality = customization.vitality;
-    
-    // Apply sprite customization
+
+    // Step 5: Apply visual customization
     playerTemplate.spritePath = customization.spritePath;
-    
-    // Adjust health based on vitality
+
+    // Step 6: Calculate derived stats based on attributes
+    // Health scales with vitality: base 80 + 2 per vitality point
     playerTemplate.maxHealth = 80.0f + (customization.vitality * 2.0f);
-    
-    std::cout << "Creating customized player: " << playerTemplate.name 
-              << " (Class: " << customization.characterClass 
+
+    std::cout << "🎨 Creating customized player: \"" << playerTemplate.name
+              << "\" (Class: " << customization.characterClass
               << ", Health: " << playerTemplate.maxHealth << ")" << std::endl;
-    
-    // Create the entity using the customized template
+
+    // Step 7: Create the actual entity using the customized template
     return CreateCharacterFromTemplate(playerTemplate, x, y);
 }

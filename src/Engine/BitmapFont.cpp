@@ -1,7 +1,41 @@
+/**
+ * @file BitmapFont.cpp
+ * @brief Implementation of ASCII art bitmap font system
+ * @author Ryan Butler
+ * @date 2025
+ */
+
 #include "Engine/BitmapFont.h"
 #include <cctype>
 #include <iostream>
 
+/**
+ * @brief Get ASCII art patterns for all supported characters
+ *
+ * Returns a static map containing ASCII art patterns for letters,
+ * numbers, and common symbols. Each character is represented as
+ * a 7-row bitmap pattern using '#' for filled pixels and spaces
+ * for empty pixels.
+ *
+ * @return Map of character to vector of pattern strings
+ *
+ * @note Patterns are 5 characters wide, 7 rows tall
+ * @note Static map ensures patterns are only created once
+ * @note '#' represents filled pixels, ' ' represents empty pixels
+ * @note Last row is always empty for character spacing
+ *
+ * Pattern Format:
+ * - Width: 5 characters
+ * - Height: 7 rows (6 for character + 1 empty for spacing)
+ * - Characters: '#' for pixel, ' ' for empty space
+ *
+ * @example
+ * ```cpp
+ * auto patterns = BitmapFont::GetFontPatterns();
+ * auto letterA = patterns['A'];
+ * // letterA contains: {"  #  ", " # # ", "#####", "#   #", "#   #", "#   #", "     "}
+ * ```
+ */
 std::unordered_map<char, std::vector<std::string>> BitmapFont::GetFontPatterns() {
     static std::unordered_map<char, std::vector<std::string>> patterns = {
         {'A', {"  #  ", " # # ", "#####", "#   #", "#   #", "#   #", "     "}},

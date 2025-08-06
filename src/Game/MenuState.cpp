@@ -1,3 +1,10 @@
+/**
+ * @file MenuState.cpp
+ * @brief Implementation of main menu game state
+ * @author Ryan Butler
+ * @date 2025
+ */
+
 #include "Game/MenuState.h"
 #include "Game/GameStateManager.h"
 #include "Engine/Renderer.h"
@@ -7,37 +14,82 @@
 #include "Engine/BitmapFont.h"
 #include <iostream>
 
+/**
+ * @brief Constructor - initializes menu state with default options
+ *
+ * Sets up the menu state with:
+ * - Default selection (first option)
+ * - Blinking animation timer
+ * - Menu option text strings
+ * - Initial visual state
+ *
+ * @note Menu options are hardcoded but could be made configurable
+ * @note Selection starts at index 0 (first option)
+ */
 MenuState::MenuState()
     : GameState(GameStateType::MENU, "Menu")
-    , m_selectedOption(0)
-    , m_blinkTimer(0.0f)
-    , m_showSelection(true) {
-
+    , m_selectedOption(0)        // Start with first option selected
+    , m_blinkTimer(0.0f)         // Initialize blink animation timer
+    , m_showSelection(true)      // Start with selection visible
+{
+    // Initialize menu option text
+    // These correspond to MenuOption enum values
     m_menuOptions = {
-        "START GAME",
-        "OPTIONS",
-        "QUIT"
+        "START GAME",   // MenuOption::START_GAME
+        "OPTIONS",      // MenuOption::OPTIONS
+        "QUIT"          // MenuOption::QUIT
     };
 }
 
+/**
+ * @brief Initialize menu when becoming active state
+ *
+ * Called when the menu state becomes active. Sets up:
+ * - Reset selection to first option
+ * - Reset visual effects and timers
+ * - Load menu-specific audio assets
+ * - Display rendering information for developers
+ *
+ * @note Audio loading is optional - menu works without sound
+ * @note Visual effects are reset to ensure consistent appearance
+ */
 void MenuState::OnEnter() {
-    std::cout << "Entering Menu State" << std::endl;
-    std::cout << "🎨 Text will be rendered as colored rectangles:" << std::endl;
+    std::cout << "🎮 Entering Main Menu" << std::endl;
+
+    // Provide helpful information for developers about the rendering system
+    std::cout << "🎨 Text rendering info (for developers):" << std::endl;
     std::cout << "   - Title: Bright yellow blocks with red outlines" << std::endl;
     std::cout << "   - Menu options: White blocks (selected: yellow)" << std::endl;
     std::cout << "   - Instructions: White blocks with black outlines" << std::endl;
-    m_selectedOption = 0;
-    m_blinkTimer = 0.0f;
-    m_showSelection = true;
+    std::cout << "   - This is placeholder rendering until font system is implemented" << std::endl;
 
-    // Load menu sounds
+    // Reset menu state to defaults
+    m_selectedOption = 0;        // Select first option
+    m_blinkTimer = 0.0f;         // Reset blink animation
+    m_showSelection = true;      // Start with selection visible
+
+    // Load menu-specific audio assets (optional)
     if (GetEngine()->GetAudioManager()) {
-        GetEngine()->GetAudioManager()->LoadSound("menu_select", "assets/sounds/menu_select.wav", SoundType::SOUND_EFFECT);
+        GetEngine()->GetAudioManager()->LoadSound(
+            "menu_select",                          // Sound identifier
+            "assets/sounds/menu_select.wav",        // File path
+            SoundType::SOUND_EFFECT                 // Sound type
+        );
+        std::cout << "🔊 Menu audio loaded" << std::endl;
     }
 }
 
+/**
+ * @brief Clean up menu when leaving state
+ *
+ * Called when transitioning away from menu state.
+ * Handles any necessary cleanup (currently minimal).
+ *
+ * @note Menu state is lightweight - minimal cleanup needed
+ * @note Audio resources remain loaded for potential reuse
+ */
 void MenuState::OnExit() {
-    std::cout << "Exiting Menu State" << std::endl;
+    std::cout << "👋 Exiting Main Menu" << std::endl;
 }
 
 void MenuState::Update(float deltaTime) {

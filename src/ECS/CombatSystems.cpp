@@ -1,32 +1,84 @@
+/**
+ * @file CombatSystems.cpp
+ * @brief Implementation of turn-based combat systems
+ * @author Ryan Butler
+ * @date 2025
+ */
+
 #include "ECS/CombatSystems.h"
 #include <algorithm>
 #include <random>
 #include <iostream>
 
-// TurnManagementSystem implementation
+// ========== TURN MANAGEMENT SYSTEM IMPLEMENTATION ==========
+
+/**
+ * @brief Update turn management system (event-driven)
+ *
+ * The turn management system is primarily event-driven rather than
+ * time-based. Most of the logic happens in response to combat actions
+ * and turn advancement rather than continuous updates.
+ *
+ * @param deltaTime Time elapsed since last frame (unused)
+ *
+ * @note This system responds to events rather than running continuous logic
+ * @note Turn advancement happens via AdvanceTurn() method calls
+ * @note Combat timing is controlled by the CombatState, not this system
+ */
 void TurnManagementSystem::Update(float deltaTime) {
     // This system is primarily event-driven, not time-based
     // Most logic happens in response to actions and turn advances
+    (void)deltaTime; // Suppress unused parameter warning
 }
 
+/**
+ * @brief Initialize combat encounter with participating entities
+ *
+ * Sets up a new combat encounter by:
+ * 1. Registering all combat participants
+ * 2. Adding TurnOrderComponent to entities that need it
+ * 3. Calculating initiative values for turn order
+ * 4. Sorting participants by initiative (highest first)
+ * 5. Setting up first turn and round tracking
+ *
+ * @param participants Vector of entities participating in combat
+ *
+ * @note Entities without CombatStatsComponent get default initiative
+ * @note Turn order is sorted by initiative (highest goes first)
+ * @note Combat starts with round 1, turn index 0
+ *
+ * @example
+ * ```cpp
+ * std::vector<Entity> combatants = {player, enemy1, enemy2};
+ * turnSystem.InitializeCombat(combatants);
+ * // Combat is now ready, first entity can take their turn
+ * ```
+ */
 void TurnManagementSystem::InitializeCombat(const std::vector<Entity>& participants) {
+    // Store combat participants and reset turn tracking
     m_turnOrder = participants;
-    m_currentTurnIndex = 0;
-    m_roundNumber = 1;
-    
+    m_currentTurnIndex = 0;  // Start with first participant
+    m_roundNumber = 1;       // Begin round 1
+
     // Initialize turn order components for all participants
     for (Entity entity : participants) {
         if (!m_entityManager->HasComponent<TurnOrderComponent>(entity)) {
+            // Add turn order component for combat tracking
             auto* turnOrder = m_entityManager->AddComponent<TurnOrderComponent>(entity);
-            
+
             // Set base initiative from combat stats or use default
             if (auto* combatStats = m_entityManager->GetComponent<CombatStatsComponent>(entity)) {
-                turnOrder->initiative = combatStats->speed;
+                turnOrder->initiative = combatStats->speed; // Speed determines initiative
+            } else {
+                turnOrder->initiative = 10; // Default initiative for entities without combat stats
             }
         }
     }
-    
+
+    // Calculate final initiative values (may include random modifiers)
     CalculateInitiative();
+
+    // Sort participants by initiative (highest goes first)
     SortByInitiative();
     
     // Fire turn start event for first entity

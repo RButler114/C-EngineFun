@@ -68,25 +68,114 @@ struct Rectangle {
         : x(x), y(y), width(w), height(h) {}
 };
 
+/**
+ * @class Texture
+ * @brief Hardware-accelerated texture wrapper for SDL2
+ *
+ * The Texture class provides a high-level interface for loading, managing,
+ * and rendering 2D textures using SDL2. It handles:
+ * - Image file loading (PNG, JPG, BMP, etc.)
+ * - GPU texture creation and management
+ * - Rendering with clipping and scaling support
+ * - Automatic resource cleanup
+ *
+ * Features:
+ * - Hardware acceleration (GPU memory)
+ * - Transparency support (alpha channel)
+ * - Efficient rendering operations
+ * - RAII resource management
+ *
+ * @example
+ * ```cpp
+ * Texture playerTexture;
+ * if (playerTexture.LoadFromFile("player.png", renderer)) {
+ *     playerTexture.Render(renderer, 100, 200); // Draw at (100, 200)
+ * }
+ * ```
+ */
 class Texture {
 public:
+    /**
+     * @brief Default constructor - creates empty texture
+     *
+     * Initializes texture to safe default state. Call LoadFromFile()
+     * to actually load image data.
+     */
     Texture();
+
+    /**
+     * @brief Destructor - automatically frees texture resources
+     *
+     * Calls Free() to release SDL texture and video memory.
+     * Follows RAII principles for automatic cleanup.
+     */
     ~Texture();
-    
+
+    /**
+     * @brief Load texture from image file
+     *
+     * @param path File path to image (PNG, JPG, BMP, etc.)
+     * @param renderer SDL renderer to create texture with
+     * @return true if loaded successfully, false on failure
+     *
+     * @note Automatically frees any existing texture before loading
+     * @note Supports transparency (PNG alpha channel)
+     */
     bool LoadFromFile(const std::string& path, SDL_Renderer* renderer);
+
+    /**
+     * @brief Free texture resources and reset state
+     *
+     * Releases SDL texture and video memory, resets dimensions to zero.
+     * Safe to call multiple times.
+     */
     void Free();
-    
+
+    /**
+     * @brief Render texture at position with optional clipping
+     *
+     * @param renderer SDL renderer to draw with
+     * @param x Screen X coordinate
+     * @param y Screen Y coordinate
+     * @param clip Optional source rectangle (nullptr = full texture)
+     */
     void Render(SDL_Renderer* renderer, int x, int y, SDL_Rect* clip = nullptr);
+
+    /**
+     * @brief Render texture with custom size and optional clipping
+     *
+     * @param renderer SDL renderer to draw with
+     * @param x Screen X coordinate
+     * @param y Screen Y coordinate
+     * @param width Desired render width
+     * @param height Desired render height
+     * @param clip Optional source rectangle (nullptr = full texture)
+     */
     void Render(SDL_Renderer* renderer, int x, int y, int width, int height, SDL_Rect* clip = nullptr);
-    
+
+    /**
+     * @brief Get texture width in pixels
+     * @return Width of loaded texture, or 0 if not loaded
+     */
     int GetWidth() const { return m_width; }
+
+    /**
+     * @brief Get texture height in pixels
+     * @return Height of loaded texture, or 0 if not loaded
+     */
     int GetHeight() const { return m_height; }
+
+    /**
+     * @brief Get underlying SDL texture handle
+     * @return Pointer to SDL_Texture, or nullptr if not loaded
+     * @note For advanced use cases - prefer Render() methods
+     */
     SDL_Texture* GetSDLTexture() const { return m_texture; }
 
 private:
-    SDL_Texture* m_texture;
-    int m_width;
-    int m_height;
+    SDL_Texture* m_texture;  ///< SDL texture handle (GPU memory)
+    int m_width;             ///< Texture width in pixels
+    int m_height;            ///< Texture height in pixels
 };
 
 class Renderer {

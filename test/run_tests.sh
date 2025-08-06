@@ -37,7 +37,6 @@ run_test() {
         ../src/Engine/*.cpp \
         ../src/Game/*.cpp \
         ../src/ECS/*.cpp \
-        ../src/Scenes/*.cpp \
         -lSDL2 -lSDL2_image -lSDL2_mixer \
         -o test_$test_executable
     
