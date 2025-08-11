@@ -346,6 +346,10 @@ struct CharacterTypeComponent : public Component {
     CharacterClass characterClass = CharacterClass::MONSTER;
     std::string name = "Unknown";
 
+    // Optional detailed job/archetype identifier (e.g., "warden", "aegis_marshal")
+    // Used to distinguish fine-grained classes for both friendly and enemy characters
+    std::string jobId = "";
+
     CharacterTypeComponent() = default;
     CharacterTypeComponent(CharacterType t, CharacterClass c, const std::string& n = "Unknown")
         : Component(), type(t), characterClass(c), name(n) {}
@@ -392,7 +396,13 @@ struct AIComponent : public Component {
         CHASE,
         ATTACK,
         FLEE,
+        SEARCH,
         DEAD
+    };
+
+    struct PatrolPoint {
+        float x, y;
+        PatrolPoint(float px, float py) : x(px), y(py) {}
     };
 
     AIState currentState = AIState::IDLE;
@@ -402,9 +412,32 @@ struct AIComponent : public Component {
     float chaseSpeed = 100.0f;       ///< Speed when chasing
     bool aggressive = true;          ///< Whether to attack on sight
     bool canFlee = false;            ///< Whether can flee when low health
+    bool returnsToPatrol = true;     ///< Whether to return to patrol after losing target
     Entity target;                   ///< Current target entity
 
+    // Patrol system
+    std::vector<PatrolPoint> patrolPoints;
+    int currentPatrolIndex = 0;
+
+    // State timing
+    float stateTimer = 0.0f;
+
     AIComponent() = default;
+
+    /**
+     * @brief Add a patrol point to the AI's patrol route
+     */
+    void AddPatrolPoint(float x, float y) {
+        patrolPoints.emplace_back(x, y);
+    }
+
+    /**
+     * @brief Change the AI's current state and reset state timer
+     */
+    void ChangeState(AIState newState) {
+        currentState = newState;
+        stateTimer = 0.0f;
+    }
 };
 
 /**
@@ -553,6 +586,35 @@ struct AbilityComponent : public Component {
         ability.damage = damage;
         ability.range = range;
         abilities.push_back(ability);
+    }
+
+    /**
+     * @brief Check if an ability can be used based on resource costs
+     */
+    bool CanUseAbility(size_t abilityIndex, float currentMana, float currentStamina) const {
+        if (abilityIndex >= abilities.size()) return false;
+
+        const Ability& ability = abilities[abilityIndex];
+
+        // Check if ability is on cooldown
+        if (ability.currentCooldown > 0.0f) return false;
+
+        // Check resource costs
+        if (ability.manaCost > currentMana) return false;
+        if (ability.staminaCost > currentStamina) return false;
+
+        return true;
+    }
+
+    /**
+     * @brief Update cooldowns for all abilities
+     */
+    void UpdateCooldowns(float deltaTime) {
+        for (Ability& ability : abilities) {
+            if (ability.currentCooldown > 0.0f) {
+                ability.currentCooldown = std::max(0.0f, ability.currentCooldown - deltaTime);
+            }
+        }
     }
 };
 

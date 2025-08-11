@@ -32,12 +32,19 @@ bool CustomizationManager::LoadFromConfig(const std::string& configPath) {
     // For now, fall back to defaults
     InitializeDefaults();
     return true;
+    // Add a simple sprite/skin selection group under Appearance
+    CustomizationGroup spriteGroup("sprite_skin", "Sprite Skin", CustomizationCategory::APPEARANCE);
+    spriteGroup.options.emplace_back("adventurer", "Adventurer", "little_adventurer.png");
+    spriteGroup.options.emplace_back("archer", "Archer", "archer_sprite.png");
+    spriteGroup.options.emplace_back("mage", "Mage", "mage_sprite.png");
+    AddGroup(spriteGroup);
+
 }
 
 void CustomizationManager::InitializeDefaults() {
     m_groups.clear();
     m_playerCustomization.Reset();
-    
+
     SetupBasicInfoGroups();
     SetupAppearanceGroups();
     SetupAttributeGroups();
@@ -53,19 +60,19 @@ CustomizationGroup* CustomizationManager::GetGroup(const std::string& groupId) {
         [&groupId](const CustomizationGroup& group) {
             return group.id == groupId;
         });
-    
+
     return (it != m_groups.end()) ? &(*it) : nullptr;
 }
 
 std::vector<CustomizationGroup*> CustomizationManager::GetGroupsByCategory(CustomizationCategory category) {
     std::vector<CustomizationGroup*> result;
-    
+
     for (auto& group : m_groups) {
         if (group.category == category) {
             result.push_back(&group);
         }
     }
-    
+
     return result;
 }
 
@@ -74,10 +81,10 @@ void CustomizationManager::ApplyGroupSelection(const std::string& groupId, int o
     if (!group || optionIndex < 0 || optionIndex >= static_cast<int>(group->options.size())) {
         return;
     }
-    
+
     group->selectedIndex = optionIndex;
     const CustomizationOption& option = group->options[optionIndex];
-    
+
     // Apply the selection to player customization data
     if (groupId == "character_class") {
         m_playerCustomization.characterClass = option.value;
@@ -99,28 +106,67 @@ void CustomizationManager::ApplyGroupSelection(const std::string& groupId, int o
 void CustomizationManager::ApplyCustomizationToPlayerData() {
     // This method will be called when transitioning to gameplay
     // It ensures all customization choices are properly applied
-    
+
     // Update sprite path based on appearance choices
     // For now, we'll use a simple mapping
-    if (m_playerCustomization.characterClass == "warrior") {
-        m_playerCustomization.spritePath = "little_adventurer.png";
-    } else if (m_playerCustomization.characterClass == "archer") {
-        m_playerCustomization.spritePath = "archer_sprite.png";
-    } else if (m_playerCustomization.characterClass == "mage") {
-        m_playerCustomization.spritePath = "mage_sprite.png";
+    // If a sprite skin group selection exists, prefer it over class mapping
+    if (CustomizationGroup* spriteGroup = GetGroup("sprite_skin")) {
+        if (spriteGroup->selectedIndex >= 0 && spriteGroup->selectedIndex < (int)spriteGroup->options.size()) {
+            m_playerCustomization.spritePath = spriteGroup->options[spriteGroup->selectedIndex].value;
+        }
+    } else {
+        // fallback by broad class
+        if (m_playerCustomization.characterClass == "warrior") {
+            m_playerCustomization.spritePath = "little_adventurer.png";
+        } else if (m_playerCustomization.characterClass == "archer") {
+            m_playerCustomization.spritePath = "archer_sprite.png";
+        } else if (m_playerCustomization.characterClass == "mage") {
+            m_playerCustomization.spritePath = "mage_sprite.png";
+        } else if (m_playerCustomization.characterClass == "rogue") {
+            m_playerCustomization.spritePath = "rogue_sprite.png";
+        }
     }
-    
-    std::cout << "Applied customization: " << m_playerCustomization.playerName 
+
+    std::cout << "Applied customization: " << m_playerCustomization.playerName
               << " (" << m_playerCustomization.characterClass << ")" << std::endl;
 }
 
 void CustomizationManager::SetupBasicInfoGroups() {
     // Character Class selection
     CustomizationGroup classGroup("character_class", "Character Class", CustomizationCategory::BASIC_INFO);
-    classGroup.options.emplace_back("warrior", "Warrior", "warrior");
-    classGroup.options.emplace_back("archer", "Archer", "archer");
-    classGroup.options.emplace_back("mage", "Mage", "mage");
-    classGroup.options.emplace_back("rogue", "Rogue", "rogue");
+
+    // Load from config [character_classes] if available; fallback to built-ins
+    ConfigManager cfg;
+    if (cfg.LoadFromFile("assets/config/customization.ini") && cfg.HasSection("character_classes")) {
+        const auto& sect = cfg.GetSections().at("character_classes").GetAll();
+        for (const auto& kv : sect) {
+            // Expect value format: DisplayName,jobId,Description
+            std::string raw = kv.second.AsString();
+            std::string display, job, desc;
+            size_t p1 = raw.find(',');
+            size_t p2 = (p1 != std::string::npos) ? raw.find(',', p1 + 1) : std::string::npos;
+            if (p1 != std::string::npos) {
+                display = raw.substr(0, p1);
+                if (p2 != std::string::npos) {
+                    job = raw.substr(p1 + 1, p2 - p1 - 1);
+                    desc = raw.substr(p2 + 1);
+                } else {
+                    job = raw.substr(p1 + 1);
+                }
+            } else {
+                display = kv.first;
+                job = kv.first;
+            }
+            classGroup.options.emplace_back(kv.first, display, job);
+            if (!desc.empty()) classGroup.options.back().description = desc;
+        }
+    } else {
+        classGroup.options.emplace_back("warrior", "Warrior", "warrior");
+        classGroup.options.emplace_back("archer", "Archer", "archer");
+        classGroup.options.emplace_back("mage", "Mage", "mage");
+        classGroup.options.emplace_back("rogue", "Rogue", "rogue");
+    }
+
     AddGroup(classGroup);
 }
 
@@ -133,7 +179,14 @@ void CustomizationManager::SetupAppearanceGroups() {
     hairColorGroup.options.emplace_back("red", "Red", "red");
     hairColorGroup.options.emplace_back("white", "White", "white");
     AddGroup(hairColorGroup);
-    
+
+    // Sprite/Skin selection
+    CustomizationGroup spriteGroup("sprite_skin", "Sprite Skin", CustomizationCategory::APPEARANCE);
+    spriteGroup.options.emplace_back("adventurer", "Adventurer", "little_adventurer.png");
+    spriteGroup.options.emplace_back("archer", "Archer", "archer_sprite.png");
+    spriteGroup.options.emplace_back("mage", "Mage", "mage_sprite.png");
+    AddGroup(spriteGroup);
+
     // Skin Tone
     CustomizationGroup skinGroup("skin_tone", "Skin Tone", CustomizationCategory::APPEARANCE);
     skinGroup.options.emplace_back("light", "Light", "light");
@@ -141,7 +194,7 @@ void CustomizationManager::SetupAppearanceGroups() {
     skinGroup.options.emplace_back("dark", "Dark", "dark");
     skinGroup.options.emplace_back("tan", "Tan", "tan");
     AddGroup(skinGroup);
-    
+
     // Eye Color
     CustomizationGroup eyeGroup("eye_color", "Eye Color", CustomizationCategory::APPEARANCE);
     eyeGroup.options.emplace_back("brown", "Brown", "brown");
@@ -150,7 +203,7 @@ void CustomizationManager::SetupAppearanceGroups() {
     eyeGroup.options.emplace_back("hazel", "Hazel", "hazel");
     eyeGroup.options.emplace_back("gray", "Gray", "gray");
     AddGroup(eyeGroup);
-    
+
     // Hair Style
     CustomizationGroup hairStyleGroup("hair_style", "Hair Style", CustomizationCategory::APPEARANCE);
     hairStyleGroup.options.emplace_back("short", "Short", "short");
@@ -163,7 +216,7 @@ void CustomizationManager::SetupAppearanceGroups() {
 void CustomizationManager::SetupAttributeGroups() {
     // Attributes will be handled differently - they're numeric values
     // For now, we'll set up some preset attribute distributions
-    
+
     CustomizationGroup attributeGroup("attribute_preset", "Attribute Focus", CustomizationCategory::ATTRIBUTES);
     attributeGroup.options.emplace_back("balanced", "Balanced (15/12/10/15)", "balanced");
     attributeGroup.options.emplace_back("strong", "Strong (20/10/8/14)", "strong");
@@ -181,7 +234,7 @@ void CustomizationManager::SetupEquipmentGroups() {
     weaponGroup.options.emplace_back("staff", "Magic Staff", "staff");
     weaponGroup.options.emplace_back("dagger", "Steel Dagger", "dagger");
     AddGroup(weaponGroup);
-    
+
     // Starting Armor
     CustomizationGroup armorGroup("starting_armor", "Starting Armor", CustomizationCategory::EQUIPMENT);
     armorGroup.options.emplace_back("leather", "Leather Armor", "leather");

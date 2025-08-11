@@ -1,4 +1,4 @@
-# Streamlined C++ Arcade Game Engine
+# Streamlined C++ Everharvest Voyager V Engine
 
 A focused C++ game engine optimized for classic arcade-style scrolling games, built with SDL2 and featuring a clean Entity-Component-System architecture.
 

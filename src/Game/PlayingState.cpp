@@ -14,6 +14,9 @@
 #include <cmath>
 #include <cstring>
 
+#include <fstream>
+#include <sstream>
+
 PlayingState::PlayingState()
     : GameState(GameStateType::PLAYING, "Playing")
     , m_gameConfig(std::make_unique<GameConfig>())
@@ -43,7 +46,22 @@ PlayingState::~PlayingState() = default;
 
 void PlayingState::OnEnter() {
     std::cout << "Entering Playing State" << std::endl;
-    
+
+    // Log resolved player sprite path and availability
+    {
+        const std::string path = m_gameConfig->GetPlayerSpritePath();
+        std::cout << "🎨 Player sprite resolved from config: " << path << std::endl;
+        if (auto* r = GetRenderer()) {
+            auto tex = r->LoadTexture(path);
+            if (!tex) {
+                std::cout << "⚠️  Could not load player sprite texture at '" << path
+                          << "'. Falling back to simple shape rendering if needed." << std::endl;
+            } else {
+                std::cout << "✅ Player sprite texture loaded successfully." << std::endl;
+            }
+        }
+    }
+
     // Initialize ECS
     m_entityManager = std::make_unique<EntityManager>();
 
@@ -71,12 +89,14 @@ void PlayingState::OnEnter() {
         // Load game sounds
         GetEngine()->GetAudioManager()->LoadSound("jump", "assets/sounds/jump.wav", SoundType::SOUND_EFFECT);
         GetEngine()->GetAudioManager()->LoadSound("collision", "assets/sounds/collision.wav", SoundType::SOUND_EFFECT);
-        GetEngine()->GetAudioManager()->LoadMusic("background", "assets/music/background.wav");
+        GetEngine()->GetAudioManager()->LoadMusic("background", "assets/music/noncopyright-music-pianos-295174.mp3");
+        GetEngine()->GetAudioManager()->LoadSound("combat_warn", "assets/music/low-horn-185556.mp3", SoundType::SOUND_EFFECT);
+        GetEngine()->GetAudioManager()->LoadMusic("combat_loop", "assets/music/battle-march-action-loop-6935.mp3");
 
         // Start background music
         GetEngine()->GetAudioManager()->PlayMusic("background", m_gameConfig->GetBackgroundMusicVolume(), -1);
     }
-    
+
     // Create game entities
     CreatePlayer();
     CreateEnemies();
@@ -211,7 +231,7 @@ void PlayingState::Render() {
             renderer->DrawRectangle(Rectangle(detailX, detailY, detailWidth, detailHeight), groundDetailColor, true);
         }
     }
-    
+
     // Render entities directly using component data (avoiding ECS query issues)
     static int debugFrameCount = 0;
     debugFrameCount++;
@@ -274,13 +294,14 @@ void PlayingState::Render() {
         int totalFrames = m_gameConfig->GetAnimationTotalFrames();
         float spriteScale = m_gameConfig->GetAnimationSpriteScale();
         SpriteFrame frame = SpriteRenderer::CreateFrame(currentFrame, spriteWidth, spriteHeight, totalFrames);
-        SpriteRenderer::RenderSprite(renderer, "assets/sprites/player/little_adventurer.png",
+        const std::string playerSpritePath = m_gameConfig->GetPlayerSpritePath();
+        SpriteRenderer::RenderSprite(renderer, playerSpritePath,
                                    playerScreenX, playerScreenY, frame, facingLeft, spriteScale);
 
         // If texture fails, the SpriteRenderer will show a magenta placeholder
         // For a more detailed fallback, we can add simple shapes here
         static bool textureExists = true;
-        auto texture = renderer->LoadTexture("assets/sprites/player/little_adventurer.png");
+        auto texture = renderer->LoadTexture(playerSpritePath);
         if (!texture && textureExists) {
             textureExists = false;
             std::cout << "Using simple shape rendering for player" << std::endl;
@@ -309,7 +330,7 @@ void PlayingState::Render() {
 
     // Manual sprite rendering for better control in arcade games
 
-    // Render enemies with config-driven positions and colors
+    // Render enemies using frog sprite (fallback to colored rectangles if missing)
     int enemyCount = std::min(5, m_gameConfig->GetEnemyCount()); // Limit to 5 for this simple rendering
     float enemySpawnStartX = m_gameConfig->GetEnemySpawnStartX();
     float enemySpawnSpacingX = m_gameConfig->GetEnemySpawnSpacingX();
@@ -317,40 +338,84 @@ void PlayingState::Render() {
     int enemyWidth = m_gameConfig->GetEnemyWidth();
     int enemyHeight = m_gameConfig->GetEnemyHeight();
 
+    // Load frog sprite and idle frames once
+    static bool s_frogFramesLoaded = false;
+    static std::vector<SpriteFrame> s_frogIdleFrames;
+    static std::shared_ptr<Texture> s_frogTexture;
+    if (!s_frogFramesLoaded) {
+        s_frogTexture = renderer->LoadTexture("assets/sprites/enemies/frog/frog.png");
+
+        std::ifstream in("assets/sprites/enemies/frog/frog.spritepos");
+        if (in) {
+            std::string line;
+            while (std::getline(in, line)) {
+                // Expect lines like: "idle 1: x y w h"
+                if (line.rfind("idle", 0) == 0) {
+                    auto colon = line.find(':');
+                    if (colon != std::string::npos) {
+                        std::string rest = line.substr(colon + 1);
+                        std::istringstream iss(rest);
+                        int fx, fy, fw, fh;
+                        if (iss >> fx >> fy >> fw >> fh) {
+                            s_frogIdleFrames.emplace_back(fx, fy, fw, fh);
+                        }
+                    }
+                }
+            }
+        }
+        s_frogFramesLoaded = true;
+    }
+
     for (int i = 0; i < enemyCount; i++) {
         float enemyX = enemySpawnStartX + i * enemySpawnSpacingX;
         float enemyY = m_gameConfig->GetPlayerStartY() + (i % 2) * enemySpawnHeightVariation;
         int enemyScreenX = static_cast<int>(enemyX - m_cameraX);
 
         if (enemyScreenX > -enemyWidth && enemyScreenX < screenWidth) {
-            Color enemyColor;
-            switch (i % 3) {
-                case 0: enemyColor = m_gameConfig->GetEnemyRedColor(); break;
-                case 1: enemyColor = m_gameConfig->GetEnemyOrangeColor(); break;
-                case 2: enemyColor = m_gameConfig->GetEnemyPurpleColor(); break;
+            bool drewSprite = false;
+            if (s_frogTexture && !s_frogIdleFrames.empty()) {
+                // Simple idle animation cycling
+                int frameIndex = static_cast<int>(std::fmod(m_gameTime * 5.0f, static_cast<float>(s_frogIdleFrames.size())));
+                const SpriteFrame& f = s_frogIdleFrames[frameIndex];
+
+                Rectangle srcRect(f.x, f.y, f.width, f.height);
+                Rectangle destRect(enemyScreenX, static_cast<int>(enemyY), enemyWidth, enemyHeight);
+                // Flip horizontally so frogs face left (game enemies move left by default)
+                renderer->DrawTexture(s_frogTexture, srcRect, destRect, true, false);
+                drewSprite = true;
             }
 
-            Rectangle enemyRect(enemyScreenX, static_cast<int>(enemyY), enemyWidth, enemyHeight);
-            renderer->DrawRectangle(enemyRect, enemyColor, true);
+            if (!drewSprite) {
+                // Fallback: colored rectangles (if sprite not available)
+                Color enemyColor;
+                switch (i % 3) {
+                    case 0: enemyColor = m_gameConfig->GetEnemyRedColor(); break;
+                    case 1: enemyColor = m_gameConfig->GetEnemyOrangeColor(); break;
+                    case 2: enemyColor = m_gameConfig->GetEnemyPurpleColor(); break;
+                }
+                Rectangle enemyRect(enemyScreenX, static_cast<int>(enemyY), enemyWidth, enemyHeight);
+                renderer->DrawRectangle(enemyRect, enemyColor, true);
+            }
 
             if (shouldDebug) {
-                std::cout << "  ✅ Enemy " << i << ": pos(" << enemyX << ", " << enemyY << ") screen(" << enemyScreenX << ", " << enemyY << ") size(" << enemyWidth << "x" << enemyHeight << ") color(" << (int)enemyColor.r << "," << (int)enemyColor.g << "," << (int)enemyColor.b << ")" << std::endl;
+                std::cout << "  ✅ Enemy " << i << ": pos(" << enemyX << ", " << enemyY << ") screen(" << enemyScreenX << ", " << enemyY << ") size(" << enemyWidth << "x" << enemyHeight << ")" << (drewSprite ? " sprite:frog" : " (fallback color)") << std::endl;
             }
         }
     }
 
-
-    
     DrawHUD();
 }
 
 void PlayingState::HandleInput() {
     auto* input = GetInputManager();
     if (!input) return;
-    
-    // Pause game or return to menu
+
+    // Pause overlay (FF10-style) using state stack
     if (input->IsKeyJustPressed(SDL_SCANCODE_P) || input->IsKeyJustPressed(SDL_SCANCODE_ESCAPE)) {
-        std::cout << "Game paused (not implemented yet)" << std::endl;
+        if (GetStateManager()) {
+            std::cout << "Opening Pause Menu..." << std::endl;
+            GetStateManager()->PushState(GameStateType::PAUSED);
+        }
     }
     if (input->IsKeyJustPressed(SDL_SCANCODE_M)) {
         std::cout << "Returning to menu..." << std::endl;
@@ -411,7 +476,7 @@ void PlayingState::HandleInput() {
 
         CreateConfigAwareCharacter("goblin", spawnX, spawnY, difficulty);
     }
-    
+
     // Player movement (using simple variables to bypass ECS corruption)
     m_playerVelX = 0;
     m_playerVelY = 0;
@@ -517,10 +582,10 @@ void PlayingState::CreatePlayer() {
     std::cout << "DEBUG: Player TransformComponent added at (" << transform->x << ", " << transform->y << ")" << std::endl;
 
     // Add audio component for jump sound
-    auto* audio = m_entityManager->AddComponent<AudioComponent>(m_player, "jump", m_gameConfig->GetJumpSoundVolume(), false, false, false);
+    [[maybe_unused]] auto* audio = m_entityManager->AddComponent<AudioComponent>(m_player, "jump", m_gameConfig->GetJumpSoundVolume(), false, false, false);
 
     // Add collision component for combat triggering
-    auto* collision = m_entityManager->AddComponent<CollisionComponent>(m_player, 32.0f, 48.0f);
+    [[maybe_unused]] auto* collision = m_entityManager->AddComponent<CollisionComponent>(m_player, 32.0f, 48.0f);
 
     // Add character type component to identify as player
     auto* charType = m_entityManager->AddComponent<CharacterTypeComponent>(m_player,
@@ -531,7 +596,7 @@ void PlayingState::CreatePlayer() {
     std::cout << "DEBUG: Added CharacterTypeComponent to player - type: " << static_cast<int>(charType->type) << std::endl;
 
     // Add health component
-    auto* health = m_entityManager->AddComponent<HealthComponent>(m_player, 100.0f);
+    [[maybe_unused]] auto* health = m_entityManager->AddComponent<HealthComponent>(m_player, 100.0f);
 
     // Add combat stats component
     auto* combatStats = m_entityManager->AddComponent<CombatStatsComponent>(m_player);
@@ -592,10 +657,10 @@ void PlayingState::CreateEnemies() {
         int enemyHeight = m_gameConfig->GetEnemyHeight();
         auto* render = m_entityManager->AddComponent<RenderComponent>(enemy, enemyWidth, enemyHeight,
                                                      enemyColor.r, enemyColor.g, enemyColor.b);
-        auto* audio = m_entityManager->AddComponent<AudioComponent>(enemy, "collision", m_gameConfig->GetCollisionSoundVolume(), false, false, true); // Collision sound
+        [[maybe_unused]] auto* audio = m_entityManager->AddComponent<AudioComponent>(enemy, "collision", m_gameConfig->GetCollisionSoundVolume(), false, false, true); // Collision sound
 
         // Add collision component for combat triggering
-        auto* collision = m_entityManager->AddComponent<CollisionComponent>(enemy,
+        [[maybe_unused]] auto* collision = m_entityManager->AddComponent<CollisionComponent>(enemy,
             static_cast<float>(enemyWidth), static_cast<float>(enemyHeight));
 
         // Add character type component to identify as enemy
@@ -607,7 +672,7 @@ void PlayingState::CreateEnemies() {
         std::cout << "DEBUG: Added CharacterTypeComponent to enemy " << i << " - type: " << static_cast<int>(charType->type) << std::endl;
 
         // Add health component
-        auto* health = m_entityManager->AddComponent<HealthComponent>(enemy, 50.0f);
+        [[maybe_unused]] auto* health = m_entityManager->AddComponent<HealthComponent>(enemy, 50.0f);
 
         // Add combat stats component
         auto* combatStats = m_entityManager->AddComponent<CombatStatsComponent>(enemy);
@@ -728,8 +793,15 @@ void PlayingState::CheckGameOver() {
     float gameDuration = m_gameConfig->GetGameDurationSeconds();
     if (m_gameTime > gameDuration) {
         std::cout << "Game Over - Time limit reached! Final Score: " << m_score << std::endl;
-        if (GetStateManager()) {
-            GetStateManager()->ChangeState(GameStateType::GAME_OVER);
+        if (auto* manager = GetStateManager()) {
+            // Pass final score to GameOverState before transitioning
+            if (auto* state = manager->GetState(GameStateType::GAME_OVER)) {
+                auto* gameOver = dynamic_cast<GameOverState*>(state);
+                if (gameOver) {
+                    gameOver->SetScore(m_score);
+                }
+            }
+            manager->ChangeState(GameStateType::GAME_OVER);
         }
     }
 }
@@ -937,41 +1009,57 @@ void PlayingState::OnCollision(const CollisionInfo& info) {
         return;
     }
 
-    // TEMPORARY FIX: Use entity IDs instead of corrupted CharacterTypeComponent
-    // Entity 1 is always the player, entities 2-9 are enemies
-    Entity player, enemy;
-    bool isPlayerEnemyCollision = false;
+    // Check character types to ensure this is truly a Player vs Enemy collision
+    // Determine if the player entity is involved (use actual m_player handle)
+    Entity player = Entity();
+    Entity other  = Entity();
 
-    if (info.entityA.GetID() == 1 && info.entityB.GetID() >= 2 && info.entityB.GetID() <= 9) {
-        // Entity A is player, Entity B is enemy
-        player = info.entityA;
-        enemy = info.entityB;
-        isPlayerEnemyCollision = true;
-        std::cout << "Player-Enemy collision detected (A=Player, B=Enemy)" << std::endl;
-    } else if (info.entityB.GetID() == 1 && info.entityA.GetID() >= 2 && info.entityA.GetID() <= 9) {
-        // Entity B is player, Entity A is enemy
-        player = info.entityB;
-        enemy = info.entityA;
-        isPlayerEnemyCollision = true;
-        std::cout << "Player-Enemy collision detected (A=Enemy, B=Player)" << std::endl;
-    } else {
-        std::cout << "Not a player-enemy collision (IDs: " << info.entityA.GetID() << ", " << info.entityB.GetID() << ")" << std::endl;
+    if (info.entityA == m_player) { player = info.entityA; other = info.entityB; }
+    else if (info.entityB == m_player) { player = info.entityB; other = info.entityA; }
+    else {
+        std::cout << "Collision did not involve player (IDs: " << info.entityA.GetID() << ", " << info.entityB.GetID() << ")" << std::endl;
+        return;
     }
 
-    if (isPlayerEnemyCollision) {
-        std::cout << "🎯 COMBAT TRIGGERED! Player vs Enemy " << enemy.GetID() << std::endl;
-
-        // Set collision cooldown to prevent immediate re-triggering
-        m_collisionCooldown = COLLISION_COOLDOWN_TIME;
-
-        // Play collision sound
-        if (GetEngine()->GetAudioManager()) {
-            GetEngine()->GetAudioManager()->PlaySound("collision", m_gameConfig->GetCollisionSoundVolume());
+    // Prefer character type check, but allow a safe fallback when missing
+    auto* otherType = m_entityManager->GetComponent<CharacterTypeComponent>(other);
+    if (otherType) {
+        if (otherType->type != CharacterTypeComponent::CharacterType::ENEMY) {
+            std::cout << "Collision with non-enemy (type=" << (int)otherType->type << ")" << std::endl;
+            return;
         }
-
-        // Trigger combat
-        TriggerCombat(player, enemy);
+    } else {
+        // Fallback: if no type, require that 'other' has a CollisionComponent and is not the player
+        // This still avoids random triggers from UI/neutral entities that likely lack colliders
+        auto* otherCol = m_entityManager->GetComponent<CollisionComponent>(other);
+        if (!otherCol) {
+            std::cout << "Collision other entity lacks collider; ignoring" << std::endl;
+            return;
+        }
+        std::cout << "⚠️  Enemy type missing; using collider-based fallback" << std::endl;
     }
+
+    Entity enemy = other;
+
+    std::cout << "🎯 COMBAT TRIGGERED! Player vs Enemy " << enemy.GetID() << std::endl;
+
+    // Set collision cooldown to prevent immediate re-triggering
+    m_collisionCooldown = COLLISION_COOLDOWN_TIME;
+
+    // Play collision sound
+    if (GetEngine()->GetAudioManager()) {
+        GetEngine()->GetAudioManager()->PlaySound("collision", m_gameConfig->GetCollisionSoundVolume());
+    }
+
+    // Audio: warn and prepare to switch to combat loop
+    if (GetEngine()->GetAudioManager()) {
+        auto* am = GetEngine()->GetAudioManager();
+        am->PlaySound("combat_warn", 1.0f);
+        am->PlayMusic("combat_loop", m_gameConfig->GetCombatMusicVolume(), -1);
+    }
+
+    // Trigger combat
+    TriggerCombat(player, enemy);
 }
 
 void PlayingState::TriggerCombat(Entity player, Entity enemy) {
@@ -1002,3 +1090,16 @@ void PlayingState::TriggerCombat(Entity player, Entity enemy) {
         std::cerr << "Error: Could not get CombatState after pushing" << std::endl;
     }
 }
+
+void PlayingState::HandlePostCombatReturn() {
+    // Nudge player left by 40px and apply extra cooldown to avoid instant retrigger
+    m_playerX -= 40.0f;
+    if (m_player.IsValid() && m_entityManager) {
+        if (auto* transform = m_entityManager->GetComponent<TransformComponent>(m_player)) {
+            transform->x = m_playerX;
+        }
+    }
+    // Extend cooldown so collision system can "breathe" for a moment
+    m_collisionCooldown = std::max(m_collisionCooldown, COLLISION_COOLDOWN_TIME * 1.5f);
+}
+

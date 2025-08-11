@@ -73,6 +73,8 @@ public:
     float GetPlayerSkyLimit() const;
     float GetPlayerGroundLimit() const;
     float GetPlayerCameraLeftBoundary() const;
+    // Resolve player sprite path from characters config (supports bare filename or full path)
+    std::string GetPlayerSpritePath() const;
 
     // Camera settings
     float GetCameraTargetOffsetX() const;

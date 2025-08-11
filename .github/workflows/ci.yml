@@ -151,7 +151,7 @@ jobs:
           - Complete ECS architecture
           - SDL2 rendering system
           - Comprehensive Doxygen documentation
-          - Arcade fighter demo game
+          - Everharvest Voyager V demo game
           
           ### Documentation
           View the complete API documentation at: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/

@@ -1,32 +1,83 @@
+/**
+ * @file CombatSystems.cpp
+ * @brief Implementation of turn-based combat systems
+ * @author Ryan Butler
+ * @date 2025
+ */
+
 #include "ECS/CombatSystems.h"
 #include <algorithm>
 #include <random>
 #include <iostream>
 
-// TurnManagementSystem implementation
-void TurnManagementSystem::Update(float deltaTime) {
+// ========== TURN MANAGEMENT SYSTEM IMPLEMENTATION ==========
+
+/**
+ * @brief Update turn management system (event-driven)
+ *
+ * The turn management system is primarily event-driven rather than
+ * time-based. Most of the logic happens in response to combat actions
+ * and turn advancement rather than continuous updates.
+ *
+ * @param deltaTime Time elapsed since last frame (unused)
+ *
+ * @note This system responds to events rather than running continuous logic
+ * @note Turn advancement happens via AdvanceTurn() method calls
+ * @note Combat timing is controlled by the CombatState, not this system
+ */
+void TurnManagementSystem::Update([[maybe_unused]] float deltaTime) {
     // This system is primarily event-driven, not time-based
     // Most logic happens in response to actions and turn advances
 }
 
+/**
+ * @brief Initialize combat encounter with participating entities
+ *
+ * Sets up a new combat encounter by:
+ * 1. Registering all combat participants
+ * 2. Adding TurnOrderComponent to entities that need it
+ * 3. Calculating initiative values for turn order
+ * 4. Sorting participants by initiative (highest first)
+ * 5. Setting up first turn and round tracking
+ *
+ * @param participants Vector of entities participating in combat
+ *
+ * @note Entities without CombatStatsComponent get default initiative
+ * @note Turn order is sorted by initiative (highest goes first)
+ * @note Combat starts with round 1, turn index 0
+ *
+ * @example
+ * ```cpp
+ * std::vector<Entity> combatants = {player, enemy1, enemy2};
+ * turnSystem.InitializeCombat(combatants);
+ * // Combat is now ready, first entity can take their turn
+ * ```
+ */
 void TurnManagementSystem::InitializeCombat(const std::vector<Entity>& participants) {
+    // Store combat participants and reset turn tracking
     m_turnOrder = participants;
-    m_currentTurnIndex = 0;
-    m_roundNumber = 1;
-    
+    m_currentTurnIndex = 0;  // Start with first participant
+    m_roundNumber = 1;       // Begin round 1
+
     // Initialize turn order components for all participants
     for (Entity entity : participants) {
         if (!m_entityManager->HasComponent<TurnOrderComponent>(entity)) {
+            // Add turn order component for combat tracking
             auto* turnOrder = m_entityManager->AddComponent<TurnOrderComponent>(entity);
-            
+
             // Set base initiative from combat stats or use default
             if (auto* combatStats = m_entityManager->GetComponent<CombatStatsComponent>(entity)) {
-                turnOrder->initiative = combatStats->speed;
+                turnOrder->initiative = combatStats->speed; // Speed determines initiative
+            } else {
+                turnOrder->initiative = 10; // Default initiative for entities without combat stats
             }
         }
     }
-    
+
+    // Calculate final initiative values (may include random modifiers)
     CalculateInitiative();
+
+    // Sort participants by initiative (highest goes first)
     SortByInitiative();
     
     // Fire turn start event for first entity
@@ -38,7 +89,7 @@ void TurnManagementSystem::InitializeCombat(const std::vector<Entity>& participa
 }
 
 Entity TurnManagementSystem::GetCurrentTurnEntity() const {
-    if (m_currentTurnIndex < m_turnOrder.size()) {
+    if (m_currentTurnIndex >= 0 && static_cast<size_t>(m_currentTurnIndex) < m_turnOrder.size()) {
         return m_turnOrder[m_currentTurnIndex];
     }
     return Entity(); // Invalid entity
@@ -46,19 +97,19 @@ Entity TurnManagementSystem::GetCurrentTurnEntity() const {
 
 void TurnManagementSystem::AdvanceToNextTurn() {
     // Mark current entity as having taken their turn
-    if (m_currentTurnIndex < m_turnOrder.size()) {
+    if (m_currentTurnIndex >= 0 && static_cast<size_t>(m_currentTurnIndex) < m_turnOrder.size()) {
         Entity currentEntity = m_turnOrder[m_currentTurnIndex];
         if (auto* turnOrder = m_entityManager->GetComponent<TurnOrderComponent>(currentEntity)) {
             turnOrder->hasTakenTurn = true;
         }
     }
-    
+
     m_currentTurnIndex++;
-    
+
     // Check if round is complete
     if (IsRoundComplete()) {
         StartNewRound();
-    } else if (m_currentTurnIndex < m_turnOrder.size()) {
+    } else if (m_currentTurnIndex >= 0 && static_cast<size_t>(m_currentTurnIndex) < m_turnOrder.size()) {
         // Fire turn start event for next entity
         if (m_eventCallback) {
             m_eventCallback(CombatEvent(CombatEvent::Type::TURN_START, m_turnOrder[m_currentTurnIndex]));
@@ -67,7 +118,7 @@ void TurnManagementSystem::AdvanceToNextTurn() {
 }
 
 bool TurnManagementSystem::IsRoundComplete() const {
-    return m_currentTurnIndex >= m_turnOrder.size();
+    return m_currentTurnIndex < 0 || static_cast<size_t>(m_currentTurnIndex) >= m_turnOrder.size();
 }
 
 void TurnManagementSystem::StartNewRound() {
@@ -126,7 +177,7 @@ void TurnManagementSystem::SortByInitiative() {
 }
 
 // CombatActionSystem implementation
-void CombatActionSystem::Update(float deltaTime) {
+void CombatActionSystem::Update([[maybe_unused]] float deltaTime) {
     // This system is primarily action-driven, not time-based
 }
 
@@ -190,7 +241,7 @@ void CombatActionSystem::ExecuteDefend(Entity defender) {
     }
 }
 
-void CombatActionSystem::ExecuteMagic(Entity caster, Entity target, int spellIndex) {
+void CombatActionSystem::ExecuteMagic(Entity caster, Entity target, [[maybe_unused]] int spellIndex) {
     // TODO: Implement magic system
     if (m_eventCallback) {
         CombatEvent event(CombatEvent::Type::ACTION_EXECUTED, caster, target);
@@ -199,7 +250,7 @@ void CombatActionSystem::ExecuteMagic(Entity caster, Entity target, int spellInd
     }
 }
 
-void CombatActionSystem::ExecuteItem(Entity user, Entity target, int itemIndex) {
+void CombatActionSystem::ExecuteItem(Entity user, Entity target, [[maybe_unused]] int itemIndex) {
     // TODO: Implement item system
     if (m_eventCallback) {
         CombatEvent event(CombatEvent::Type::ACTION_EXECUTED, user, target);
@@ -226,7 +277,7 @@ bool CombatActionSystem::ExecuteFlee(Entity entity) {
     return success;
 }
 
-float CombatActionSystem::CalculateDamage(Entity attacker, Entity target, float baseDamage) {
+float CombatActionSystem::CalculateDamage([[maybe_unused]] Entity attacker, Entity target, float baseDamage) {
     auto* targetStats = m_entityManager->GetComponent<CombatStatsComponent>(target);
     auto* targetTurnOrder = m_entityManager->GetComponent<TurnOrderComponent>(target);
     
@@ -256,7 +307,7 @@ float CombatActionSystem::CalculateDamage(Entity attacker, Entity target, float 
     return damage;
 }
 
-bool CombatActionSystem::CheckHit(Entity attacker, Entity target) {
+bool CombatActionSystem::CheckHit(Entity attacker, [[maybe_unused]] Entity target) {
     auto* attackerStats = m_entityManager->GetComponent<CombatStatsComponent>(attacker);
     float accuracy = attackerStats ? attackerStats->accuracy : (m_config ? m_config->GetAccuracyBase() : 85.0f);
     
@@ -326,7 +377,7 @@ void CombatUISystem::UpdateMessageTimer(float deltaTime) {
 }
 
 // CombatResolutionSystem implementation
-void CombatResolutionSystem::Update(float deltaTime) {
+void CombatResolutionSystem::Update([[maybe_unused]] float deltaTime) {
     if (IsBattleOver() && m_battleEndCallback) {
         bool playerWon = DidPlayerWin();
         int experience, gold;
@@ -356,7 +407,7 @@ void CombatResolutionSystem::CalculateRewards(int& experience, int& gold) const 
     int expPerLevel = m_config ? m_config->GetExperiencePerEnemyLevel() : 10;
     int goldPerLevel = m_config ? m_config->GetGoldPerEnemyLevel() : 5;
 
-    int enemyCount = CountLivingEnemies();
+    [[maybe_unused]] int enemyCount = CountLivingEnemies();
     int totalEnemyLevel = GetTotalEnemyLevel();
 
     experience = baseExp + (totalEnemyLevel * expPerLevel);

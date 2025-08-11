@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# 🎮 Arcade Fighter Game - Quick Start Script
+# 🎮 Everharvest Voyager V Game - Quick Start Script
 # ==========================================
 
-echo "🎮 ARCADE FIGHTER GAME ENGINE"
+echo "🎮 Everharvest Voyager V GAME ENGINE"
 echo "=============================="
 
 # Colors for output
@@ -67,11 +67,11 @@ echo -e "${GREEN}✅ Game executable ready${NC}"
 
 # Run the game
 echo ""
-echo -e "${BLUE}🚀 Starting Arcade Fighter Game...${NC}"
+echo -e "${BLUE}🚀 Starting Everharvest Voyager V Game...${NC}"
 echo ""
 echo "Game Options:"
 echo "  1. Simple Test (basic rendering validation)"
-echo "  2. Arcade Fighter (full game experience)"
+echo "  2. Everharvest Voyager V (full game experience)"
 echo ""
 echo -e "${YELLOW}Recommendation: Choose option 2 for the complete game!${NC}"
 echo ""
@@ -81,4 +81,4 @@ cd bin
 ./GameEngine
 
 echo ""
-echo -e "${GREEN}🎮 Thanks for playing Arcade Fighter!${NC}"
+echo -e "${GREEN}🎮 Thanks for playing Everharvest Voyager V!${NC}"
