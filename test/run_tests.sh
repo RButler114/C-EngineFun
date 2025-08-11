@@ -142,7 +142,7 @@ echo "These tests require you to run the actual game and verify functionality."
 run_manual_test "Main Game Menu Navigation" \
 "Run: cd ../build && echo '2' | ./bin/GameEngine
 You should see:
-1. A window opens with 'ARCADE FIGHTER' title
+1. A window opens with 'Everharvest Voyager V' title
 2. Menu options: START GAME, OPTIONS, QUIT
 3. You can navigate with arrow keys
 4. Selection highlights change

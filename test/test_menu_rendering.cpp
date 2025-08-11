@@ -37,7 +37,7 @@ protected:
         std::cout << "✅ Background gradient drawn" << std::endl;
         
         // Test 2: Draw title blocks (exactly like MenuState)
-        const char* title = "ARCADE FIGHTER";
+        const char* title = "Everharvest Voyager V";
         int titleWidth = strlen(title) * 32;
         int startX = (800 - titleWidth) / 2;
         int titleY = 150;

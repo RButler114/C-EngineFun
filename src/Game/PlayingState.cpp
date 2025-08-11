@@ -89,7 +89,9 @@ void PlayingState::OnEnter() {
         // Load game sounds
         GetEngine()->GetAudioManager()->LoadSound("jump", "assets/sounds/jump.wav", SoundType::SOUND_EFFECT);
         GetEngine()->GetAudioManager()->LoadSound("collision", "assets/sounds/collision.wav", SoundType::SOUND_EFFECT);
-        GetEngine()->GetAudioManager()->LoadMusic("background", "assets/music/background.wav");
+        GetEngine()->GetAudioManager()->LoadMusic("background", "assets/music/noncopyright-music-pianos-295174.mp3");
+        GetEngine()->GetAudioManager()->LoadSound("combat_warn", "assets/music/low-horn-185556.mp3", SoundType::SOUND_EFFECT);
+        GetEngine()->GetAudioManager()->LoadMusic("combat_loop", "assets/music/battle-march-action-loop-6935.mp3");
 
         // Start background music
         GetEngine()->GetAudioManager()->PlayMusic("background", m_gameConfig->GetBackgroundMusicVolume(), -1);
@@ -408,9 +410,12 @@ void PlayingState::HandleInput() {
     auto* input = GetInputManager();
     if (!input) return;
 
-    // Pause game or return to menu
+    // Pause overlay (FF10-style) using state stack
     if (input->IsKeyJustPressed(SDL_SCANCODE_P) || input->IsKeyJustPressed(SDL_SCANCODE_ESCAPE)) {
-        std::cout << "Game paused (not implemented yet)" << std::endl;
+        if (GetStateManager()) {
+            std::cout << "Opening Pause Menu..." << std::endl;
+            GetStateManager()->PushState(GameStateType::PAUSED);
+        }
     }
     if (input->IsKeyJustPressed(SDL_SCANCODE_M)) {
         std::cout << "Returning to menu..." << std::endl;
@@ -1004,41 +1009,57 @@ void PlayingState::OnCollision(const CollisionInfo& info) {
         return;
     }
 
-    // TEMPORARY FIX: Use entity IDs instead of corrupted CharacterTypeComponent
-    // Entity 1 is always the player, entities 2-9 are enemies
-    Entity player, enemy;
-    bool isPlayerEnemyCollision = false;
+    // Check character types to ensure this is truly a Player vs Enemy collision
+    // Determine if the player entity is involved (use actual m_player handle)
+    Entity player = Entity();
+    Entity other  = Entity();
 
-    if (info.entityA.GetID() == 1 && info.entityB.GetID() >= 2 && info.entityB.GetID() <= 9) {
-        // Entity A is player, Entity B is enemy
-        player = info.entityA;
-        enemy = info.entityB;
-        isPlayerEnemyCollision = true;
-        std::cout << "Player-Enemy collision detected (A=Player, B=Enemy)" << std::endl;
-    } else if (info.entityB.GetID() == 1 && info.entityA.GetID() >= 2 && info.entityA.GetID() <= 9) {
-        // Entity B is player, Entity A is enemy
-        player = info.entityB;
-        enemy = info.entityA;
-        isPlayerEnemyCollision = true;
-        std::cout << "Player-Enemy collision detected (A=Enemy, B=Player)" << std::endl;
-    } else {
-        std::cout << "Not a player-enemy collision (IDs: " << info.entityA.GetID() << ", " << info.entityB.GetID() << ")" << std::endl;
+    if (info.entityA == m_player) { player = info.entityA; other = info.entityB; }
+    else if (info.entityB == m_player) { player = info.entityB; other = info.entityA; }
+    else {
+        std::cout << "Collision did not involve player (IDs: " << info.entityA.GetID() << ", " << info.entityB.GetID() << ")" << std::endl;
+        return;
     }
 
-    if (isPlayerEnemyCollision) {
-        std::cout << "🎯 COMBAT TRIGGERED! Player vs Enemy " << enemy.GetID() << std::endl;
-
-        // Set collision cooldown to prevent immediate re-triggering
-        m_collisionCooldown = COLLISION_COOLDOWN_TIME;
-
-        // Play collision sound
-        if (GetEngine()->GetAudioManager()) {
-            GetEngine()->GetAudioManager()->PlaySound("collision", m_gameConfig->GetCollisionSoundVolume());
+    // Prefer character type check, but allow a safe fallback when missing
+    auto* otherType = m_entityManager->GetComponent<CharacterTypeComponent>(other);
+    if (otherType) {
+        if (otherType->type != CharacterTypeComponent::CharacterType::ENEMY) {
+            std::cout << "Collision with non-enemy (type=" << (int)otherType->type << ")" << std::endl;
+            return;
         }
-
-        // Trigger combat
-        TriggerCombat(player, enemy);
+    } else {
+        // Fallback: if no type, require that 'other' has a CollisionComponent and is not the player
+        // This still avoids random triggers from UI/neutral entities that likely lack colliders
+        auto* otherCol = m_entityManager->GetComponent<CollisionComponent>(other);
+        if (!otherCol) {
+            std::cout << "Collision other entity lacks collider; ignoring" << std::endl;
+            return;
+        }
+        std::cout << "⚠️  Enemy type missing; using collider-based fallback" << std::endl;
     }
+
+    Entity enemy = other;
+
+    std::cout << "🎯 COMBAT TRIGGERED! Player vs Enemy " << enemy.GetID() << std::endl;
+
+    // Set collision cooldown to prevent immediate re-triggering
+    m_collisionCooldown = COLLISION_COOLDOWN_TIME;
+
+    // Play collision sound
+    if (GetEngine()->GetAudioManager()) {
+        GetEngine()->GetAudioManager()->PlaySound("collision", m_gameConfig->GetCollisionSoundVolume());
+    }
+
+    // Audio: warn and prepare to switch to combat loop
+    if (GetEngine()->GetAudioManager()) {
+        auto* am = GetEngine()->GetAudioManager();
+        am->PlaySound("combat_warn", 1.0f);
+        am->PlayMusic("combat_loop", m_gameConfig->GetCombatMusicVolume(), -1);
+    }
+
+    // Trigger combat
+    TriggerCombat(player, enemy);
 }
 
 void PlayingState::TriggerCombat(Entity player, Entity enemy) {

@@ -30,9 +30,11 @@
  * in the main menu interface.
  */
 enum class MenuOption {
-    START_GAME,  ///< Begin new game (transition to PLAYING state)
-    OPTIONS,     ///< Open settings menu (transition to OPTIONS state)
-    QUIT         ///< Exit the application
+    START_GAME,   ///< Begin new game (transition to PLAYING state)
+    HIGH_SCORES,  ///< View high scores (only shown if any exist)
+    OPTIONS,      ///< Open settings menu (transition to OPTIONS state)
+    CREDITS,      ///< View game credits (transition to CREDITS state)
+    QUIT          ///< Exit the application
 };
 
 /**

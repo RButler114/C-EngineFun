@@ -44,7 +44,9 @@ enum class GameStateType {
     COMBAT,         ///< Turn-based combat encounters (triggered by collisions)
     PAUSED,         ///< Game paused overlay (can resume or return to menu)
     GAME_OVER,      ///< End game screen with score and restart options
-    OPTIONS         ///< Settings menu for audio, controls, graphics
+    OPTIONS,        ///< Settings menu for audio, controls, graphics
+    CREDITS,        ///< Credits screen with acknowledgments
+    HIGH_SCORES     ///< High scores screen
 };
 
 /**

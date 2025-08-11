@@ -346,6 +346,10 @@ struct CharacterTypeComponent : public Component {
     CharacterClass characterClass = CharacterClass::MONSTER;
     std::string name = "Unknown";
 
+    // Optional detailed job/archetype identifier (e.g., "warden", "aegis_marshal")
+    // Used to distinguish fine-grained classes for both friendly and enemy characters
+    std::string jobId = "";
+
     CharacterTypeComponent() = default;
     CharacterTypeComponent(CharacterType t, CharacterClass c, const std::string& n = "Unknown")
         : Component(), type(t), characterClass(c), name(n) {}

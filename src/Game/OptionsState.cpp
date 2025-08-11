@@ -66,9 +66,12 @@ void OptionsState::OnEnter() {
     m_blinkTimer = 0.0f;
     m_showSelection = true;
 
-    // Load menu sounds
+    // Load menu UI sounds
     if (GetEngine()->GetAudioManager()) {
-        GetEngine()->GetAudioManager()->LoadSound("menu_select", "assets/sounds/menu_select.wav", SoundType::SOUND_EFFECT);
+        auto* am = GetEngine()->GetAudioManager();
+        am->LoadSound("menu_nav", "assets/music/clicking-interface-select-201946.mp3", SoundType::SOUND_EFFECT);
+        am->LoadSound("menu_select", "assets/music/select-001-337218.mp3", SoundType::SOUND_EFFECT);
+        am->LoadSound("menu_back", "assets/music/select-003-337609.mp3", SoundType::SOUND_EFFECT);
     }
 }
 
@@ -197,7 +200,7 @@ void OptionsState::NavigateUp() {
     m_blinkTimer = 0.0f;
 
     if (GetEngine()->GetAudioManager()) {
-        GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.7f);
+        GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
     }
 }
 
@@ -211,7 +214,7 @@ void OptionsState::NavigateDown() {
     m_blinkTimer = 0.0f;
 
     if (GetEngine()->GetAudioManager()) {
-        GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.7f);
+        GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
     }
 }
 
@@ -295,6 +298,9 @@ void OptionsState::SelectOption() {
 }
 
 void OptionsState::GoBack() {
+    if (GetEngine()->GetAudioManager()) {
+        GetEngine()->GetAudioManager()->PlaySound("menu_back", 0.9f);
+    }
     if (GetStateManager()) {
         GetStateManager()->PopState();
     }

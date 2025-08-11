@@ -1,6 +1,6 @@
 /**
  * @file main.cpp
- * @brief Main entry point for the C++ Arcade Game Engine
+ * @brief Main entry point for the C++ Everharvest Voyager V Engine
  * @author Ryan Butler
  * @date 2025
  *
@@ -26,6 +26,10 @@
 #include "Game/CombatState.h"
 #include "Game/GameOverState.h"
 #include "Game/OptionsState.h"
+#include "Game/CreditsState.h"
+#include "Game/PauseState.h"
+#include "Game/HighScoreState.h"
+
 #include <iostream>
 #include <random>
 #include <chrono>
@@ -109,11 +113,21 @@ public:
         // COMBAT: Turn-based combat system (triggered by collisions)
         m_stateManager->AddState(GameStateType::COMBAT, std::make_unique<CombatState>());
 
+        // PAUSED: FF10-style overlay menu for party/status/options
+        m_stateManager->AddState(GameStateType::PAUSED, std::make_unique<PauseState>());
+
         // GAME_OVER: End game screen with score and restart options
         m_stateManager->AddState(GameStateType::GAME_OVER, std::make_unique<GameOverState>());
 
         // OPTIONS: Settings menu for audio, controls, graphics
         m_stateManager->AddState(GameStateType::OPTIONS, std::make_unique<OptionsState>());
+
+        // CREDITS: Credits screen
+        m_stateManager->AddState(GameStateType::CREDITS, std::make_unique<CreditsState>());
+
+        // HIGH_SCORES: High scores screen
+        m_stateManager->AddState(GameStateType::HIGH_SCORES, std::make_unique<HighScoreState>());
+
 
         // Start the game in the main menu state
         // Players will navigate from here to other states
@@ -166,7 +180,7 @@ protected:
 
         // Only update title once per second to avoid flickering
         if (titleUpdateTimer >= 1.0f) {
-            std::string title = "Arcade Game - FPS: " + std::to_string((int)GetFPS());
+            std::string title = "Everharvest Voyager V - FPS: " + std::to_string((int)GetFPS());
             GetWindow()->SetTitle(title.c_str());
             titleUpdateTimer = 0.0f; // Reset timer
         }
@@ -251,7 +265,7 @@ int main() {
 
     // Initialize all game systems (window, renderer, audio, states, etc.)
     // This is where the heavy lifting happens - loading resources, setting up OpenGL, etc.
-    if (!game.Initialize("🎮 Arcade Game 🎮", 800, 600)) {
+    if (!game.Initialize("🎮 Everharvest Voyager V 🎮", 800, 600)) {
         // If initialization fails, log the error and exit gracefully
         // Common causes: missing graphics drivers, audio issues, file permissions
         std::cerr << "❌ Failed to initialize game!" << std::endl;

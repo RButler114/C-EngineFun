@@ -67,9 +67,9 @@ void CombatState::OnEnter() {
             audioManager->LoadSound("combat_magic", "assets/sounds/magic.wav", SoundType::SOUND_EFFECT);
             audioManager->LoadSound("combat_victory", "assets/sounds/victory.wav", SoundType::SOUND_EFFECT);
             audioManager->LoadSound("combat_defeat", "assets/sounds/defeat.wav", SoundType::SOUND_EFFECT);
-            audioManager->LoadMusic("combat_music", "assets/music/combat.wav");
+            audioManager->LoadMusic("combat_music", "assets/music/battle-march-action-loop-6935.mp3");
 
-            // Start combat music
+            // Start combat music (loop)
             audioManager->PlayMusic("combat_music", m_gameConfig->GetCombatMusicVolume(), -1);
         } catch (...) {
             std::cout << "Warning: Could not load combat audio files" << std::endl;

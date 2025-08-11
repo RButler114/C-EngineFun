@@ -115,12 +115,15 @@ void CustomizationManager::ApplyCustomizationToPlayerData() {
             m_playerCustomization.spritePath = spriteGroup->options[spriteGroup->selectedIndex].value;
         }
     } else {
+        // fallback by broad class
         if (m_playerCustomization.characterClass == "warrior") {
             m_playerCustomization.spritePath = "little_adventurer.png";
         } else if (m_playerCustomization.characterClass == "archer") {
             m_playerCustomization.spritePath = "archer_sprite.png";
         } else if (m_playerCustomization.characterClass == "mage") {
             m_playerCustomization.spritePath = "mage_sprite.png";
+        } else if (m_playerCustomization.characterClass == "rogue") {
+            m_playerCustomization.spritePath = "rogue_sprite.png";
         }
     }
 
@@ -131,10 +134,39 @@ void CustomizationManager::ApplyCustomizationToPlayerData() {
 void CustomizationManager::SetupBasicInfoGroups() {
     // Character Class selection
     CustomizationGroup classGroup("character_class", "Character Class", CustomizationCategory::BASIC_INFO);
-    classGroup.options.emplace_back("warrior", "Warrior", "warrior");
-    classGroup.options.emplace_back("archer", "Archer", "archer");
-    classGroup.options.emplace_back("mage", "Mage", "mage");
-    classGroup.options.emplace_back("rogue", "Rogue", "rogue");
+
+    // Load from config [character_classes] if available; fallback to built-ins
+    ConfigManager cfg;
+    if (cfg.LoadFromFile("assets/config/customization.ini") && cfg.HasSection("character_classes")) {
+        const auto& sect = cfg.GetSections().at("character_classes").GetAll();
+        for (const auto& kv : sect) {
+            // Expect value format: DisplayName,jobId,Description
+            std::string raw = kv.second.AsString();
+            std::string display, job, desc;
+            size_t p1 = raw.find(',');
+            size_t p2 = (p1 != std::string::npos) ? raw.find(',', p1 + 1) : std::string::npos;
+            if (p1 != std::string::npos) {
+                display = raw.substr(0, p1);
+                if (p2 != std::string::npos) {
+                    job = raw.substr(p1 + 1, p2 - p1 - 1);
+                    desc = raw.substr(p2 + 1);
+                } else {
+                    job = raw.substr(p1 + 1);
+                }
+            } else {
+                display = kv.first;
+                job = kv.first;
+            }
+            classGroup.options.emplace_back(kv.first, display, job);
+            if (!desc.empty()) classGroup.options.back().description = desc;
+        }
+    } else {
+        classGroup.options.emplace_back("warrior", "Warrior", "warrior");
+        classGroup.options.emplace_back("archer", "Archer", "archer");
+        classGroup.options.emplace_back("mage", "Mage", "mage");
+        classGroup.options.emplace_back("rogue", "Rogue", "rogue");
+    }
+
     AddGroup(classGroup);
 }
 

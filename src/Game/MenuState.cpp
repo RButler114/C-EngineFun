@@ -10,6 +10,8 @@
 #include "Engine/Renderer.h"
 #include "Engine/InputManager.h"
 #include "Engine/Engine.h"
+#include "Game/HighScoreAPI.h"
+
 #include "Engine/AudioManager.h"
 #include "Engine/BitmapFont.h"
 #include <iostream>
@@ -32,13 +34,8 @@ MenuState::MenuState()
     , m_blinkTimer(0.0f)         // Initialize blink animation timer
     , m_showSelection(true)      // Start with selection visible
 {
-    // Initialize menu option text
-    // These correspond to MenuOption enum values
-    m_menuOptions = {
-        "START GAME",   // MenuOption::START_GAME
-        "OPTIONS",      // MenuOption::OPTIONS
-        "QUIT"          // MenuOption::QUIT
-    };
+    // Initialize menu option text (HIGH SCORES inserted conditionally in OnEnter)
+    m_menuOptions = { "START GAME", "OPTIONS", "CREDITS", "QUIT" };
 }
 
 /**
@@ -68,18 +65,34 @@ void MenuState::OnEnter() {
     m_blinkTimer = 0.0f;         // Reset blink animation
     m_showSelection = true;      // Start with selection visible
 
+    // Conditionally insert HIGH SCORES option if any exist
+    {
+        #include "Game/HighScoreAPI.h"
+        if (HighScoreAPI::HasAnyScores()) {
+            // Insert HIGH SCORES right after START GAME
+            if (m_menuOptions.size() == 4) {
+                m_menuOptions.insert(m_menuOptions.begin() + 1, "HIGH SCORES");
+            }
+        } else {
+            // Ensure it is not present if no scores
+            if (m_menuOptions.size() == 5) {
+                // If present at index 1
+                if (m_menuOptions[1] == std::string("HIGH SCORES")) {
+                    m_menuOptions.erase(m_menuOptions.begin() + 1);
+                }
+            }
+        }
+    }
+
     // Load menu-specific audio assets (optional)
     if (GetEngine()->GetAudioManager()) {
         auto* audio = GetEngine()->GetAudioManager();
-        // Selection blip
-        audio->LoadSound(
-            "menu_select",                          // Sound identifier
-            "assets/sounds/menu_select.wav",        // File path
-            SoundType::SOUND_EFFECT                   // Sound type
-        );
+        // Menu UI sounds
+        audio->LoadSound("menu_nav", "assets/music/clicking-interface-select-201946.mp3", SoundType::SOUND_EFFECT);
+        audio->LoadSound("menu_select", "assets/music/select-001-337218.mp3", SoundType::SOUND_EFFECT);
+        audio->LoadSound("menu_back", "assets/music/select-003-337609.mp3", SoundType::SOUND_EFFECT);
 
         // Menu background music
-        // Note: Using existing file assets/music/Adventure-320.mp3
         audio->LoadMusic("menu_music", "assets/music/Adventure-320.mp3");
         audio->PlayMusic("menu_music", 1.0f, -1); // Use master music volume, loop
 
@@ -150,15 +163,24 @@ void MenuState::HandleInput() {
         debugTimer = 0.0f;
     }
 
-    // Navigation
-    if (input->IsKeyJustPressed(SDL_SCANCODE_UP) || input->IsKeyJustPressed(SDL_SCANCODE_W)) {
+    // Navigation with manual debouncing (avoid JustPressed issues)
+    static bool upWasPressed = false;
+    static bool downWasPressed = false;
+
+    bool upPressed = input->IsKeyPressed(SDL_SCANCODE_UP) || input->IsKeyPressed(SDL_SCANCODE_W);
+    bool downPressed = input->IsKeyPressed(SDL_SCANCODE_DOWN) || input->IsKeyPressed(SDL_SCANCODE_S);
+
+    if (upPressed && !upWasPressed) {
         std::cout << "UP key pressed!" << std::endl;
         NavigateUp();
     }
-    if (input->IsKeyJustPressed(SDL_SCANCODE_DOWN) || input->IsKeyJustPressed(SDL_SCANCODE_S)) {
+    if (downPressed && !downWasPressed) {
         std::cout << "DOWN key pressed!" << std::endl;
         NavigateDown();
     }
+
+    upWasPressed = upPressed;
+    downWasPressed = downPressed;
 
     // Selection - using IsKeyPressed with debouncing since IsKeyJustPressed has issues
     static bool enterWasPressed = false;
@@ -180,12 +202,18 @@ void MenuState::HandleInput() {
         std::cout << "ESCAPE key pressed!" << std::endl;
         if (m_selectedOption == static_cast<int>(MenuOption::QUIT)) {
             // If QUIT is already selected, confirm quit
+            if (GetEngine()->GetAudioManager()) {
+                GetEngine()->GetAudioManager()->PlaySound("menu_back", 0.9f);
+            }
             GetEngine()->Quit();
         } else {
             // Otherwise, navigate to QUIT option
             m_selectedOption = static_cast<int>(MenuOption::QUIT);
             m_showSelection = true;
             m_blinkTimer = 0.0f;
+            if (GetEngine()->GetAudioManager()) {
+                GetEngine()->GetAudioManager()->PlaySound("menu_back", 0.9f);
+            }
             std::cout << "Navigate to QUIT option - press ESCAPE again or ENTER to confirm" << std::endl;
         }
     }
@@ -193,23 +221,6 @@ void MenuState::HandleInput() {
 
 void MenuState::NavigateUp() {
     // UP key should move to visually higher option (lower index)
-    m_selectedOption++;
-    if (m_selectedOption >= static_cast<int>(m_menuOptions.size())) {
-        m_selectedOption = 0;
-    }
-    m_showSelection = true;
-    m_blinkTimer = 0.0f;
-
-    // Play menu navigation sound
-    if (GetEngine()->GetAudioManager()) {
-        GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.7f);
-    }
-
-    std::cout << "🔼 Menu navigation UP - Selected option: " << m_selectedOption << " (" << m_menuOptions[m_selectedOption] << ")" << std::endl;
-}
-
-void MenuState::NavigateDown() {
-    // DOWN key should move to visually lower option (higher index)
     m_selectedOption--;
     if (m_selectedOption < 0) {
         m_selectedOption = static_cast<int>(m_menuOptions.size()) - 1;
@@ -219,14 +230,55 @@ void MenuState::NavigateDown() {
 
     // Play menu navigation sound
     if (GetEngine()->GetAudioManager()) {
-        GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.7f);
+        GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+    }
+
+    std::cout << "🔼 Menu navigation UP - Selected option: " << m_selectedOption << " (" << m_menuOptions[m_selectedOption] << ")" << std::endl;
+}
+
+void MenuState::NavigateDown() {
+    // DOWN key should move to visually lower option (higher index)
+    m_selectedOption++;
+    if (m_selectedOption >= static_cast<int>(m_menuOptions.size())) {
+        m_selectedOption = 0;
+    }
+    m_showSelection = true;
+    m_blinkTimer = 0.0f;
+
+    // Play menu navigation sound
+    if (GetEngine()->GetAudioManager()) {
+        GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
     }
 
     std::cout << "🔽 Menu navigation DOWN - Selected option: " << m_selectedOption << " (" << m_menuOptions[m_selectedOption] << ")" << std::endl;
 }
 
 void MenuState::SelectOption() {
-    MenuOption option = static_cast<MenuOption>(m_selectedOption);
+    MenuOption option = MenuOption::START_GAME;
+    // Map index to enum respecting conditional HIGH SCORES
+    if (m_menuOptions.size() == 5) {
+        // [0]=START GAME, [1]=HIGH SCORES, [2]=OPTIONS, [3]=CREDITS, [4]=QUIT
+        switch (m_selectedOption) {
+            case 0: option = MenuOption::START_GAME; break;
+            case 1: option = MenuOption::HIGH_SCORES; break;
+            case 2: option = MenuOption::OPTIONS; break;
+            case 3: option = MenuOption::CREDITS; break;
+            case 4: option = MenuOption::QUIT; break;
+        }
+    } else {
+        // [0]=START GAME, [1]=OPTIONS, [2]=CREDITS, [3]=QUIT
+        switch (m_selectedOption) {
+            case 0: option = MenuOption::START_GAME; break;
+            case 1: option = MenuOption::OPTIONS; break;
+            case 2: option = MenuOption::CREDITS; break;
+            case 3: option = MenuOption::QUIT; break;
+        }
+    }
+
+    // Play select sound
+    if (GetEngine()->GetAudioManager()) {
+        GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.9f);
+    }
 
     switch (option) {
         case MenuOption::START_GAME:
@@ -236,10 +288,24 @@ void MenuState::SelectOption() {
             }
             break;
 
+        case MenuOption::HIGH_SCORES:
+            std::cout << "Opening high scores..." << std::endl;
+            if (GetStateManager()) {
+                GetStateManager()->PushState(GameStateType::HIGH_SCORES);
+            }
+            break;
+
         case MenuOption::OPTIONS:
             std::cout << "Opening options..." << std::endl;
             if (GetStateManager()) {
                 GetStateManager()->PushState(GameStateType::OPTIONS);
+            }
+            break;
+
+        case MenuOption::CREDITS:
+            std::cout << "Opening credits..." << std::endl;
+            if (GetStateManager()) {
+                GetStateManager()->PushState(GameStateType::CREDITS);
             }
             break;
 
@@ -265,7 +331,7 @@ void MenuState::DrawTitle() {
     auto* renderer = GetRenderer();
 
     // Draw title using bitmap font
-    std::string title = "ARCADE FIGHTER";
+    std::string title = "Everharvest Voyager V";
     int titleWidth = title.length() * 6 * 4; // 6 pixels per char * 4 scale
     int startX = (800 - titleWidth) / 2;
     int titleY = 150;
@@ -284,18 +350,18 @@ void MenuState::DrawTitle() {
 
 void MenuState::DrawMenu() {
     auto* renderer = GetRenderer();
-    
+
     int menuStartY = 350;
     int menuSpacing = 60;
-    
+
     for (int i = 0; i < static_cast<int>(m_menuOptions.size()); i++) {
         int optionY = menuStartY + i * menuSpacing;
         bool isSelected = (i == m_selectedOption);
-        
+
         // Calculate text width for centering
         int textWidth = m_menuOptions[i].length() * 16;
         int textX = (800 - textWidth) / 2;
-        
+
         // Draw selection indicator
         if (isSelected && m_showSelection) {
             // Draw selection box with more prominent colors
@@ -309,12 +375,12 @@ void MenuState::DrawMenu() {
                 renderer->DrawLine(textX + textWidth + 25, optionY + 8 + i, textX + textWidth + 40, optionY + 8 + i, Color(255, 0, 0, 255));
             }
         }
-        
+
         // Draw menu text using bitmap font
         Color textColor = isSelected ? Color(255, 255, 0, 255) : Color(220, 220, 220, 255);
         BitmapFont::DrawText(renderer, m_menuOptions[i], textX, optionY, 2, textColor); // Scale 2
     }
-    
+
     // Draw instructions at bottom using bitmap font
     std::string instructions = "USE ARROW KEYS TO NAVIGATE - ENTER TO SELECT - ESC TO QUIT";
     int instrWidth = instructions.length() * 6 * 1; // 6 pixels per char * 1 scale

@@ -131,7 +131,7 @@ void Window::Shutdown() {
  * @example
  * ```cpp
  * window.SetTitle("My Game - FPS: 60");
- * window.SetTitle("🎮 Arcade Game 🎮");  // Unicode support
+ * window.SetTitle("🎮 Everharvest Voyager V 🎮");  // Unicode support
  * ```
  */
 void Window::SetTitle(const char* title) {

@@ -12,6 +12,8 @@
 #include "Engine/InputManager.h"
 #include "Game/GameStateManager.h"
 #include "Engine/ConfigSystem.h"
+#include "Engine/AudioManager.h"
+
 #include <SDL2/SDL.h>
 #include <iostream>
 #include <algorithm>
@@ -54,7 +56,16 @@ void CustomizationState::OnEnter() {
 
     // Load current category groups
     SelectCategory(0);
+
+    // Load common UI sounds for consistent UX
+    if (GetEngine()->GetAudioManager()) {
+        auto* am = GetEngine()->GetAudioManager();
+        am->LoadSound("menu_nav", "assets/music/clicking-interface-select-201946.mp3", SoundType::SOUND_EFFECT);
+        am->LoadSound("menu_select", "assets/music/select-001-337218.mp3", SoundType::SOUND_EFFECT);
+        am->LoadSound("menu_back", "assets/music/select-003-337609.mp3", SoundType::SOUND_EFFECT);
+    }
 }
+
 
 void CustomizationState::OnExit() {
     std::cout << "Exiting Customization State" << std::endl;
@@ -132,6 +143,8 @@ void CustomizationState::HandleInput() {
             } else if (m_currentMode == UIMode::CONFIRMATION) {
                 m_currentMode = UIMode::CATEGORY_SELECTION;
             }
+            if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_back", 0.9f);
+
         }
         return;
     }
@@ -370,13 +383,18 @@ void CustomizationState::HandleCategoryInput() {
     auto* input = GetInputManager();
     if (!input) return;
 
-    if (input->IsKeyJustPressed(SDL_SCANCODE_UP)) {
+    static bool upWas=false, downWas=false;
+    bool upNow = input->IsKeyPressed(SDL_SCANCODE_UP);
+    bool downNow = input->IsKeyPressed(SDL_SCANCODE_DOWN);
+
+    if (upNow && !upWas) {
         m_selectedCategoryIndex = std::max(0, m_selectedCategoryIndex - 1);
-    } else if (input->IsKeyJustPressed(SDL_SCANCODE_DOWN)) {
+        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+    } else if (downNow && !downWas) {
         m_selectedCategoryIndex = std::min(static_cast<int>(m_categories.size()) - 1, m_selectedCategoryIndex + 1);
+        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
     } else if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
         SelectCategory(m_selectedCategoryIndex);
-
         // Special handling for name input
         if (m_categories[m_selectedCategoryIndex] == CustomizationCategory::BASIC_INFO) {
             m_currentMode = UIMode::NAME_INPUT;
@@ -384,10 +402,13 @@ void CustomizationState::HandleCategoryInput() {
         } else {
             m_currentMode = UIMode::OPTION_SELECTION;
         }
+        if (GetEngine()->GetAudioManager()) { GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.9f); }
     } else if (input->IsKeyJustPressed(SDL_SCANCODE_C)) {
         // Quick confirm - go to confirmation screen
         m_currentMode = UIMode::CONFIRMATION;
     }
+
+    upWas = upNow; downWas = downNow;
 }
 
 void CustomizationState::HandleOptionInput() {
@@ -396,25 +417,37 @@ void CustomizationState::HandleOptionInput() {
 
     if (m_currentCategoryGroups.empty()) return;
 
-    if (input->IsKeyJustPressed(SDL_SCANCODE_UP)) {
+    static bool upWas=false, downWas=false, leftWas=false, rightWas=false;
+    bool upNow = input->IsKeyPressed(SDL_SCANCODE_UP);
+    bool downNow = input->IsKeyPressed(SDL_SCANCODE_DOWN);
+    bool leftNow = input->IsKeyPressed(SDL_SCANCODE_LEFT);
+    bool rightNow = input->IsKeyPressed(SDL_SCANCODE_RIGHT);
+
+    if (upNow && !upWas) {
         if (m_selectedGroupIndex < static_cast<int>(m_currentCategoryGroups.size())) {
-            CustomizationGroup* group = m_currentCategoryGroups[m_selectedGroupIndex];
             m_selectedOptionIndex = std::max(0, m_selectedOptionIndex - 1);
+            if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
         }
-    } else if (input->IsKeyJustPressed(SDL_SCANCODE_DOWN)) {
+    } else if (downNow && !downWas) {
         if (m_selectedGroupIndex < static_cast<int>(m_currentCategoryGroups.size())) {
-            CustomizationGroup* group = m_currentCategoryGroups[m_selectedGroupIndex];
+            auto* group = m_currentCategoryGroups[m_selectedGroupIndex];
             m_selectedOptionIndex = std::min(static_cast<int>(group->options.size()) - 1, m_selectedOptionIndex + 1);
+            if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
         }
-    } else if (input->IsKeyJustPressed(SDL_SCANCODE_LEFT)) {
+    } else if (leftNow && !leftWas) {
         m_selectedGroupIndex = std::max(0, m_selectedGroupIndex - 1);
         m_selectedOptionIndex = 0;
-    } else if (input->IsKeyJustPressed(SDL_SCANCODE_RIGHT)) {
+        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+    } else if (rightNow && !rightWas) {
         m_selectedGroupIndex = std::min(static_cast<int>(m_currentCategoryGroups.size()) - 1, m_selectedGroupIndex + 1);
         m_selectedOptionIndex = 0;
+        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
     } else if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
         ApplyCurrentSelection();
+        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.9f);
     }
+
+    upWas=upNow; downWas=downNow; leftWas=leftNow; rightWas=rightNow;
 }
 
 void CustomizationState::HandleNameInputKeys() {
@@ -466,6 +499,10 @@ void CustomizationState::HandleConfirmationInput() {
     if (!input) return;
 
     if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
+        if (GetEngine()->GetAudioManager()) {
+            GetEngine()->GetAudioManager()->LoadSound("game_start", "assets/music/game-start-6104.mp3", SoundType::SOUND_EFFECT);
+            GetEngine()->GetAudioManager()->PlaySound("game_start", 1.0f);
+        }
         StartGame();
     }
 }

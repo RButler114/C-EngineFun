@@ -67,15 +67,51 @@ Entity CharacterFactory::CreateCustomizedPlayer(float x, float y, const PlayerCu
     // Step 3: Map character class string to enum value
     // This allows the customization system to use string names while
     // the ECS system uses efficient enum values
-    if (customization.characterClass == "warrior") {
-        playerTemplate.characterClass = CharacterTypeComponent::CharacterClass::WARRIOR;
-    } else if (customization.characterClass == "archer") {
-        playerTemplate.characterClass = CharacterTypeComponent::CharacterClass::ARCHER;
-    } else if (customization.characterClass == "mage") {
-        playerTemplate.characterClass = CharacterTypeComponent::CharacterClass::MAGE;
-    } else if (customization.characterClass == "rogue") {
-        playerTemplate.characterClass = CharacterTypeComponent::CharacterClass::ROGUE;
+    // Map fine-grained job ids to broad classes used by ECS
+    const std::string& job = customization.characterClass;
+    auto toLower = [](std::string s){ for (auto& ch : s) ch = std::tolower(static_cast<unsigned char>(ch)); return s; };
+    std::string j = toLower(job);
+    auto setClass = [&](CharacterTypeComponent::CharacterClass cc){ playerTemplate.characterClass = cc; };
+
+    // Frontline / Melee
+    if (j == "warden" || j == "aegis marshal" || j == "aegis_marshal" || j == "sentinel prime" || j == "sentinel_prime"
+        || j == "void bastion" || j == "void_bastion" || j == "breaker" || j == "iron prow" || j == "iron_prow") {
+        setClass(CharacterTypeComponent::CharacterClass::TANK);
+    } else if (j == "star reaver" || j == "star_reaver") {
+        setClass(CharacterTypeComponent::CharacterClass::ROGUE);
     }
+    // Ranged / Tech
+    else if (j == "machinist" || j == "shockwright" || j == "gear savant" || j == "gear_savant" || j == "chronomech"
+             || j == "pulse gunner" || j == "pulse_gunner" || j == "star artillerist" || j == "star_artillerist") {
+        setClass(CharacterTypeComponent::CharacterClass::ARCHER);
+    }
+    // Support / Hybrid
+    else if (j == "splicer" || j == "biowright" || j == "plague sower" || j == "plague_sower" || j == "star alchemist" || j == "star_alchemist"
+             || j == "lifeforge medic" || j == "lifeforge_medic" || j == "cryo archivist" || j == "cryo_archivist") {
+        setClass(CharacterTypeComponent::CharacterClass::SUPPORT);
+    }
+    // Stealth / Mobility
+    else if (j == "shadowrunner" || j == "spectreblade" || j == "eclipse dancer" || j == "eclipse_dancer"
+             || j == "null phantom" || j == "null_phantom" || j == "hollow wraith" || j == "hollow_wraith" || j == "starshade") {
+        setClass(CharacterTypeComponent::CharacterClass::ROGUE);
+    }
+    // Cosmic / Psionic
+    else if (j == "seer" || j == "mindflare" || j == "star oracle" || j == "star_oracle" || j == "eidolon weaver" || j == "eidolon_weaver"
+             || j == "dreamsinger" || j == "astromancer") {
+        setClass(CharacterTypeComponent::CharacterClass::MAGE);
+    } else if (j == "warrior" || j == "archer" || j == "mage" || j == "rogue") {
+        // Keep support for original four
+        if (j == "warrior") setClass(CharacterTypeComponent::CharacterClass::WARRIOR);
+        else if (j == "archer") setClass(CharacterTypeComponent::CharacterClass::ARCHER);
+        else if (j == "mage") setClass(CharacterTypeComponent::CharacterClass::MAGE);
+        else if (j == "rogue") setClass(CharacterTypeComponent::CharacterClass::ROGUE);
+    } else {
+        // Default mapping
+        setClass(CharacterTypeComponent::CharacterClass::WARRIOR);
+    }
+
+    // Propagate the chosen fine-grained job id
+    playerTemplate.jobId = job;
 
     // Step 4: Apply custom attribute values
     // These override the base template values with player choices

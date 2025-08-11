@@ -164,6 +164,28 @@ private:
      */
     bool m_showRestartPrompt;
 
+    // High score initials input
+    bool m_collectingInitials{false};
+    std::string m_initials; // up to 3 chars
+    float m_caretTimer{0.0f};
+    bool m_caretOn{true};
+
+    // Optional: guard against ultra-fast repeat on first press
+    float m_initialsRepeatCooldown{0.0f}; // seconds remaining before accepting next char
+    float m_backspaceCooldown{0.0f};      // seconds remaining before accepting next backspace
+
+    // Visual feedback when a character is accepted or removed
+    float m_initialsFeedbackTimer{0.0f};  // countdown
+    float m_feedbackDuration{0.12f};      // seconds (can be overridden by config)
+
+    // Tunables (can be overridden by config)
+    float m_repeatGuard{0.08f};    // seconds between accepted chars
+    float m_backspaceGuard{0.11f}; // seconds between accepted backspaces
+
+    void DrawInitialsPrompt();
+    void HandleInitialsInput();
+
+
     // ========== PRIVATE RENDERING METHODS ==========
 
     /**
