@@ -87,7 +87,7 @@ public:
     const std::vector<Entity>& GetTurnOrder() const { return m_turnOrder; }
 
 private:
-    GameConfig* m_config;
+    [[maybe_unused]] GameConfig* m_config;
     std::vector<Entity> m_turnOrder;
     int m_currentTurnIndex;
     int m_roundNumber;
@@ -176,7 +176,7 @@ public:
     void SetCurrentTurnEntity(Entity entity);
 
 private:
-    GameConfig* m_config;
+    [[maybe_unused]] GameConfig* m_config;
     std::vector<Entity> m_participants;
     Entity m_currentTurnEntity;
     std::string m_currentMessage;

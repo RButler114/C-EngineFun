@@ -251,6 +251,15 @@ public:
     GameState* GetCurrentState() const;
 
     /**
+     * @brief Get a pointer to a specific registered state by type
+     *
+     * Returns a raw pointer to the stored state instance for the given
+     * GameStateType if it has been registered via AddState(). Returns
+     * nullptr if no such state exists.
+     */
+    GameState* GetState(GameStateType type) const;
+
+    /**
      * @brief Check if there are any active states
      *
      * Returns true if there's at least one state on the stack,

@@ -80,6 +80,17 @@ float GameConfig::GetPlayerCameraLeftBoundary() const {
     return GetConfigValueFloat("player", "camera_left_boundary", -50.0f);
 }
 
+
+std::string GameConfig::GetPlayerSpritePath() const {
+    // read from [player] sprite_path in characters.ini
+    std::string configured = m_characterConfig->Get("player", "sprite_path", "assets/sprites/player/little_adventurer.png").AsString();
+    // If the config provides just a filename, assume assets/sprites/player/
+    if (configured.find('/') == std::string::npos && configured.find('\\') == std::string::npos) {
+        return std::string("assets/sprites/player/") + configured;
+    }
+    return configured;
+}
+
 // Camera settings
 float GameConfig::GetCameraTargetOffsetX() const {
     return m_gameplayConfig->Get("camera", "target_offset_x", -300.0f).AsFloat();
@@ -352,7 +363,7 @@ float GameConfig::GetDefeatSoundVolume() const {
 }
 
 // Helper method for colors
-Color GameConfig::GetColorFromConfig(const ConfigManager& config, const std::string& section, 
+Color GameConfig::GetColorFromConfig(const ConfigManager& config, const std::string& section,
                                    const std::string& prefix, const Color& defaultColor) const {
     int r = config.Get(section, prefix + "_r", defaultColor.r).AsInt();
     int g = config.Get(section, prefix + "_g", defaultColor.g).AsInt();

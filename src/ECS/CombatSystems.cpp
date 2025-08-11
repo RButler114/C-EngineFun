@@ -25,10 +25,9 @@
  * @note Turn advancement happens via AdvanceTurn() method calls
  * @note Combat timing is controlled by the CombatState, not this system
  */
-void TurnManagementSystem::Update(float deltaTime) {
+void TurnManagementSystem::Update([[maybe_unused]] float deltaTime) {
     // This system is primarily event-driven, not time-based
     // Most logic happens in response to actions and turn advances
-    (void)deltaTime; // Suppress unused parameter warning
 }
 
 /**
@@ -90,7 +89,7 @@ void TurnManagementSystem::InitializeCombat(const std::vector<Entity>& participa
 }
 
 Entity TurnManagementSystem::GetCurrentTurnEntity() const {
-    if (m_currentTurnIndex < m_turnOrder.size()) {
+    if (m_currentTurnIndex >= 0 && static_cast<size_t>(m_currentTurnIndex) < m_turnOrder.size()) {
         return m_turnOrder[m_currentTurnIndex];
     }
     return Entity(); // Invalid entity
@@ -98,19 +97,19 @@ Entity TurnManagementSystem::GetCurrentTurnEntity() const {
 
 void TurnManagementSystem::AdvanceToNextTurn() {
     // Mark current entity as having taken their turn
-    if (m_currentTurnIndex < m_turnOrder.size()) {
+    if (m_currentTurnIndex >= 0 && static_cast<size_t>(m_currentTurnIndex) < m_turnOrder.size()) {
         Entity currentEntity = m_turnOrder[m_currentTurnIndex];
         if (auto* turnOrder = m_entityManager->GetComponent<TurnOrderComponent>(currentEntity)) {
             turnOrder->hasTakenTurn = true;
         }
     }
-    
+
     m_currentTurnIndex++;
-    
+
     // Check if round is complete
     if (IsRoundComplete()) {
         StartNewRound();
-    } else if (m_currentTurnIndex < m_turnOrder.size()) {
+    } else if (m_currentTurnIndex >= 0 && static_cast<size_t>(m_currentTurnIndex) < m_turnOrder.size()) {
         // Fire turn start event for next entity
         if (m_eventCallback) {
             m_eventCallback(CombatEvent(CombatEvent::Type::TURN_START, m_turnOrder[m_currentTurnIndex]));
@@ -119,7 +118,7 @@ void TurnManagementSystem::AdvanceToNextTurn() {
 }
 
 bool TurnManagementSystem::IsRoundComplete() const {
-    return m_currentTurnIndex >= m_turnOrder.size();
+    return m_currentTurnIndex < 0 || static_cast<size_t>(m_currentTurnIndex) >= m_turnOrder.size();
 }
 
 void TurnManagementSystem::StartNewRound() {
@@ -178,7 +177,7 @@ void TurnManagementSystem::SortByInitiative() {
 }
 
 // CombatActionSystem implementation
-void CombatActionSystem::Update(float deltaTime) {
+void CombatActionSystem::Update([[maybe_unused]] float deltaTime) {
     // This system is primarily action-driven, not time-based
 }
 
@@ -242,7 +241,7 @@ void CombatActionSystem::ExecuteDefend(Entity defender) {
     }
 }
 
-void CombatActionSystem::ExecuteMagic(Entity caster, Entity target, int spellIndex) {
+void CombatActionSystem::ExecuteMagic(Entity caster, Entity target, [[maybe_unused]] int spellIndex) {
     // TODO: Implement magic system
     if (m_eventCallback) {
         CombatEvent event(CombatEvent::Type::ACTION_EXECUTED, caster, target);
@@ -251,7 +250,7 @@ void CombatActionSystem::ExecuteMagic(Entity caster, Entity target, int spellInd
     }
 }
 
-void CombatActionSystem::ExecuteItem(Entity user, Entity target, int itemIndex) {
+void CombatActionSystem::ExecuteItem(Entity user, Entity target, [[maybe_unused]] int itemIndex) {
     // TODO: Implement item system
     if (m_eventCallback) {
         CombatEvent event(CombatEvent::Type::ACTION_EXECUTED, user, target);
@@ -278,7 +277,7 @@ bool CombatActionSystem::ExecuteFlee(Entity entity) {
     return success;
 }
 
-float CombatActionSystem::CalculateDamage(Entity attacker, Entity target, float baseDamage) {
+float CombatActionSystem::CalculateDamage([[maybe_unused]] Entity attacker, Entity target, float baseDamage) {
     auto* targetStats = m_entityManager->GetComponent<CombatStatsComponent>(target);
     auto* targetTurnOrder = m_entityManager->GetComponent<TurnOrderComponent>(target);
     
@@ -308,7 +307,7 @@ float CombatActionSystem::CalculateDamage(Entity attacker, Entity target, float 
     return damage;
 }
 
-bool CombatActionSystem::CheckHit(Entity attacker, Entity target) {
+bool CombatActionSystem::CheckHit(Entity attacker, [[maybe_unused]] Entity target) {
     auto* attackerStats = m_entityManager->GetComponent<CombatStatsComponent>(attacker);
     float accuracy = attackerStats ? attackerStats->accuracy : (m_config ? m_config->GetAccuracyBase() : 85.0f);
     
@@ -378,7 +377,7 @@ void CombatUISystem::UpdateMessageTimer(float deltaTime) {
 }
 
 // CombatResolutionSystem implementation
-void CombatResolutionSystem::Update(float deltaTime) {
+void CombatResolutionSystem::Update([[maybe_unused]] float deltaTime) {
     if (IsBattleOver() && m_battleEndCallback) {
         bool playerWon = DidPlayerWin();
         int experience, gold;
@@ -408,7 +407,7 @@ void CombatResolutionSystem::CalculateRewards(int& experience, int& gold) const 
     int expPerLevel = m_config ? m_config->GetExperiencePerEnemyLevel() : 10;
     int goldPerLevel = m_config ? m_config->GetGoldPerEnemyLevel() : 5;
 
-    int enemyCount = CountLivingEnemies();
+    [[maybe_unused]] int enemyCount = CountLivingEnemies();
     int totalEnemyLevel = GetTotalEnemyLevel();
 
     experience = baseExp + (totalEnemyLevel * expPerLevel);

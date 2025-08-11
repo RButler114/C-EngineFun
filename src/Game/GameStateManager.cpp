@@ -243,8 +243,13 @@ GameState* GameStateManager::GetCurrentState() const {
     if (m_stateStack.empty()) {
         return nullptr;
     }
-    
+
     auto it = m_states.find(m_stateStack.top());
+    return (it != m_states.end()) ? it->second.get() : nullptr;
+}
+
+GameState* GameStateManager::GetState(GameStateType type) const {
+    auto it = m_states.find(type);
     return (it != m_states.end()) ? it->second.get() : nullptr;
 }
 

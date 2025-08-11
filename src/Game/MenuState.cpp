@@ -70,12 +70,20 @@ void MenuState::OnEnter() {
 
     // Load menu-specific audio assets (optional)
     if (GetEngine()->GetAudioManager()) {
-        GetEngine()->GetAudioManager()->LoadSound(
+        auto* audio = GetEngine()->GetAudioManager();
+        // Selection blip
+        audio->LoadSound(
             "menu_select",                          // Sound identifier
             "assets/sounds/menu_select.wav",        // File path
-            SoundType::SOUND_EFFECT                 // Sound type
+            SoundType::SOUND_EFFECT                   // Sound type
         );
-        std::cout << "🔊 Menu audio loaded" << std::endl;
+
+        // Menu background music
+        // Note: Using existing file assets/music/Adventure-320.mp3
+        audio->LoadMusic("menu_music", "assets/music/Adventure-320.mp3");
+        audio->PlayMusic("menu_music", 1.0f, -1); // Use master music volume, loop
+
+        std::cout << "🔊 Menu audio loaded and music started" << std::endl;
     }
 }
 
@@ -90,6 +98,10 @@ void MenuState::OnEnter() {
  */
 void MenuState::OnExit() {
     std::cout << "👋 Exiting Main Menu" << std::endl;
+    // Stop menu music when leaving the menu
+    if (GetEngine()->GetAudioManager()) {
+        GetEngine()->GetAudioManager()->StopMusic();
+    }
 }
 
 void MenuState::Update(float deltaTime) {
@@ -180,9 +192,10 @@ void MenuState::HandleInput() {
 }
 
 void MenuState::NavigateUp() {
-    m_selectedOption--;
-    if (m_selectedOption < 0) {
-        m_selectedOption = static_cast<int>(m_menuOptions.size()) - 1;
+    // UP key should move to visually higher option (lower index)
+    m_selectedOption++;
+    if (m_selectedOption >= static_cast<int>(m_menuOptions.size())) {
+        m_selectedOption = 0;
     }
     m_showSelection = true;
     m_blinkTimer = 0.0f;
@@ -196,9 +209,10 @@ void MenuState::NavigateUp() {
 }
 
 void MenuState::NavigateDown() {
-    m_selectedOption++;
-    if (m_selectedOption >= static_cast<int>(m_menuOptions.size())) {
-        m_selectedOption = 0;
+    // DOWN key should move to visually lower option (higher index)
+    m_selectedOption--;
+    if (m_selectedOption < 0) {
+        m_selectedOption = static_cast<int>(m_menuOptions.size()) - 1;
     }
     m_showSelection = true;
     m_blinkTimer = 0.0f;
@@ -225,7 +239,7 @@ void MenuState::SelectOption() {
         case MenuOption::OPTIONS:
             std::cout << "Opening options..." << std::endl;
             if (GetStateManager()) {
-                GetStateManager()->ChangeState(GameStateType::OPTIONS);
+                GetStateManager()->PushState(GameStateType::OPTIONS);
             }
             break;
 

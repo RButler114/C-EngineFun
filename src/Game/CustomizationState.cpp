@@ -11,15 +11,16 @@
 #include "Engine/BitmapFont.h"
 #include "Engine/InputManager.h"
 #include "Game/GameStateManager.h"
+#include "Engine/ConfigSystem.h"
 #include <SDL2/SDL.h>
 #include <iostream>
 #include <algorithm>
 
 // Color constants are now defined in the header as static const int values
 
-CustomizationState::CustomizationState() 
+CustomizationState::CustomizationState()
     : GameState(GameStateType::CUSTOMIZATION, "Customization") {
-    
+
     // Initialize categories in order
     m_categories = {
         CustomizationCategory::BASIC_INFO,
@@ -42,7 +43,7 @@ void CustomizationState::OnEnter() {
 
     // Also initialize the global instance
     CustomizationManager::GetInstance().InitializeDefaults();
-    
+
     // Reset UI state
     m_currentMode = UIMode::CATEGORY_SELECTION;
     m_selectedCategoryIndex = 0;
@@ -50,7 +51,7 @@ void CustomizationState::OnEnter() {
     m_selectedOptionIndex = 0;
     m_nameInput = m_customizationManager->GetPlayerCustomization().playerName;
     m_nameInputActive = false;
-    
+
     // Load current category groups
     SelectCategory(0);
 }
@@ -91,7 +92,7 @@ void CustomizationState::Render() {
     // Render title
     BitmapFont::DrawText(renderer, "CHARACTER CUSTOMIZATION", MARGIN, 20, 3,
                         Color(COLOR_ACCENT_R, COLOR_ACCENT_G, COLOR_ACCENT_B, 255));
-    
+
     // Render based on current mode
     switch (m_currentMode) {
         case UIMode::CATEGORY_SELECTION:
@@ -110,7 +111,7 @@ void CustomizationState::Render() {
             RenderConfirmation();
             break;
     }
-    
+
     // Always render character preview and instructions
     RenderCharacterPreview();
     RenderInstructions();
@@ -142,7 +143,7 @@ void CustomizationState::HandleInput() {
         }
         return;
     }
-    
+
     // Mode-specific input handling
     switch (m_currentMode) {
         case UIMode::CATEGORY_SELECTION:
@@ -503,6 +504,26 @@ void CustomizationState::StartGame() {
 
     // Copy customization data to the global instance
     CustomizationManager::GetInstance().GetPlayerCustomization() = m_customizationManager->GetPlayerCustomization();
+    // Persist chosen sprite/skin into characters.ini before leaving
+    {
+        const auto& pc = m_customizationManager->GetPlayerCustomization();
+        ConfigManager chars;
+        if (chars.LoadFromFile("assets/config/characters.ini")) {
+            // write bare filename to match existing convention
+            std::string filename = pc.spritePath;
+            size_t slash = filename.find_last_of("/\\");
+            if (slash != std::string::npos) filename = filename.substr(slash + 1);
+            chars.Set("player", "sprite_path", ConfigValue(filename));
+            if (chars.SaveToFile("assets/config/characters.ini")) {
+                std::cout << "💾 Saved player sprite to characters.ini: " << filename << std::endl;
+            } else {
+                std::cout << "❌ Failed to save characters.ini" << std::endl;
+            }
+        } else {
+            std::cout << "⚠️ Could not load characters.ini to save sprite selection" << std::endl;
+        }
+    }
+
     CustomizationManager::GetInstance().ApplyCustomizationToPlayerData();
 
     // Validate customization

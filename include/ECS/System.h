@@ -66,7 +66,7 @@ public:
      *
      * @param entity The entity that was added
      */
-    virtual void OnEntityAdded(Entity entity) {}
+    virtual void OnEntityAdded([[maybe_unused]] Entity entity) {}
 
     /**
      * @brief Called when an entity is removed from the world
@@ -76,7 +76,7 @@ public:
      *
      * @param entity The entity that was removed
      */
-    virtual void OnEntityRemoved(Entity entity) {}
+    virtual void OnEntityRemoved([[maybe_unused]] Entity entity) {}
 
     /**
      * @brief Set the entity manager reference

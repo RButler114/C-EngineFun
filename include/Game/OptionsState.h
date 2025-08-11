@@ -118,6 +118,7 @@ private:
     // Helper methods
     void InitializeOptions();
     void SaveKeybindings();
+    int GetOptionCount() const;
     std::string GetVolumeDisplayText(float volume) const;
     std::string GetKeybindingDisplayText(const KeyBinding& binding) const;
 

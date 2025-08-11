@@ -172,19 +172,18 @@ bool CollisionSystem::AABB(const TransformComponent* transformA, const Collision
     float topB = transformB->y;                         // Top edge
     float bottomB = transformB->y + collisionB->height; // Bottom edge
 
-    // AABB collision test: rectangles collide if they overlap on BOTH axes
-    // X-axis overlap: leftA < rightB AND rightA > leftB
-    // Y-axis overlap: topA < bottomB AND bottomA > topB
-    if (leftA < rightB && rightA > leftB && topA < bottomB && bottomA > topB) {
-        // Collision detected! Calculate overlap amounts for collision response
+    // Compute overlap extents on both axes
+    float ox = std::min(rightA, rightB) - std::max(leftA, leftB);
+    float oy = std::min(bottomA, bottomB) - std::max(topA, topB);
 
-        // Horizontal overlap: how much the rectangles intersect on X-axis
-        overlapX = std::min(rightA, rightB) - std::max(leftA, leftB);
+    // Require a small minimum overlap on both axes to consider it a collision
+    // This reduces "near-miss" sensitivity from grazing edges
+    constexpr float MIN_OVERLAP = 4.0f; // pixels
 
-        // Vertical overlap: how much the rectangles intersect on Y-axis
-        overlapY = std::min(bottomA, bottomB) - std::max(topA, topB);
-
-        return true; // Collision confirmed
+    if (ox > MIN_OVERLAP && oy > MIN_OVERLAP) {
+        overlapX = ox;
+        overlapY = oy;
+        return true;
     }
 
     // No collision detected

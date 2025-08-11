@@ -337,6 +337,16 @@ private:
      * to their initial values for starting a fresh game.
      */
     void ResetGameState();
+public:
+    /**
+     * @brief Adjust player position and cooldown on return from combat
+     *
+     * Moves the player slightly away from the last enemy to avoid
+     * immediate re-trigger of combat and applies an extended cooldown.
+     */
+    void HandlePostCombatReturn();
+
+private:
 
     /**
      * @brief Create character with configuration-based stats

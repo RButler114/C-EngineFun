@@ -110,38 +110,88 @@ void OptionsState::HandleInput() {
     if (m_inKeybindingMode) {
         HandleKeybindingInput();
     } else {
-        // Navigation
-        if (input->IsKeyJustPressed(SDL_SCANCODE_UP) || input->IsKeyJustPressed(SDL_SCANCODE_W)) {
+        // Navigation - using IsKeyPressed with debouncing since IsKeyJustPressed has issues
+        static bool upWasPressed = false;
+        static bool downWasPressed = false;
+        static bool wWasPressed = false;
+        static bool sWasPressed = false;
+
+        bool upPressed = input->IsKeyPressed(SDL_SCANCODE_UP);
+        bool downPressed = input->IsKeyPressed(SDL_SCANCODE_DOWN);
+        bool wPressed = input->IsKeyPressed(SDL_SCANCODE_W);
+        bool sPressed = input->IsKeyPressed(SDL_SCANCODE_S);
+
+        if ((upPressed && !upWasPressed) || (wPressed && !wWasPressed)) {
             NavigateUp();
         }
-        if (input->IsKeyJustPressed(SDL_SCANCODE_DOWN) || input->IsKeyJustPressed(SDL_SCANCODE_S)) {
+        if ((downPressed && !downWasPressed) || (sPressed && !sWasPressed)) {
             NavigateDown();
         }
 
-        // Value adjustment
-        if (input->IsKeyJustPressed(SDL_SCANCODE_LEFT) || input->IsKeyJustPressed(SDL_SCANCODE_A)) {
+        upWasPressed = upPressed;
+        downWasPressed = downPressed;
+        wWasPressed = wPressed;
+        sWasPressed = sPressed;
+
+        // Value adjustment - using IsKeyPressed with debouncing since IsKeyJustPressed has issues
+        static bool leftWasPressed = false;
+        static bool rightWasPressed = false;
+        static bool aWasPressed = false;
+        static bool dWasPressed = false;
+
+        bool leftPressed = input->IsKeyPressed(SDL_SCANCODE_LEFT);
+        bool rightPressed = input->IsKeyPressed(SDL_SCANCODE_RIGHT);
+        bool aPressed = input->IsKeyPressed(SDL_SCANCODE_A);
+        bool dPressed = input->IsKeyPressed(SDL_SCANCODE_D);
+
+        if ((leftPressed && !leftWasPressed) || (aPressed && !aWasPressed)) {
             AdjustLeft();
         }
-        if (input->IsKeyJustPressed(SDL_SCANCODE_RIGHT) || input->IsKeyJustPressed(SDL_SCANCODE_D)) {
+        if ((rightPressed && !rightWasPressed) || (dPressed && !dWasPressed)) {
             AdjustRight();
         }
 
-        // Selection
-        if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN) || input->IsKeyJustPressed(SDL_SCANCODE_SPACE)) {
+        leftWasPressed = leftPressed;
+        rightWasPressed = rightPressed;
+        aWasPressed = aPressed;
+        dWasPressed = dPressed;
+
+        // Selection - using IsKeyPressed with debouncing since IsKeyJustPressed has issues
+        static bool enterWasPressed = false;
+        static bool spaceWasPressed = false;
+
+        bool enterPressed = input->IsKeyPressed(SDL_SCANCODE_RETURN);
+        bool spacePressed = input->IsKeyPressed(SDL_SCANCODE_SPACE);
+
+        if ((enterPressed && !enterWasPressed) || (spacePressed && !spaceWasPressed)) {
             SelectOption();
         }
 
+        enterWasPressed = enterPressed;
+        spaceWasPressed = spacePressed;
+
         // Back - use B key for consistent navigation
-        if (input->IsKeyJustPressed(SDL_SCANCODE_B) || input->IsKeyJustPressed(SDL_SCANCODE_ESCAPE)) {
+        static bool bWasPressed = false;
+        static bool escapeWasPressed = false;
+
+        bool bPressed = input->IsKeyPressed(SDL_SCANCODE_B);
+        bool escapePressed = input->IsKeyPressed(SDL_SCANCODE_ESCAPE);
+
+        if ((bPressed && !bWasPressed) || (escapePressed && !escapeWasPressed)) {
             GoBack();
         }
+
+        bWasPressed = bPressed;
+        escapeWasPressed = escapePressed;
+
     }
 }
 
 void OptionsState::NavigateUp() {
+    // UP key should move to visually higher option (lower index)
     m_selectedOption--;
     if (m_selectedOption < 0) {
-        m_selectedOption = static_cast<int>(m_options.size()) - 1;
+        m_selectedOption = GetOptionCount() - 1;
     }
     m_showSelection = true;
     m_blinkTimer = 0.0f;
@@ -152,8 +202,9 @@ void OptionsState::NavigateUp() {
 }
 
 void OptionsState::NavigateDown() {
+    // DOWN key should move to visually lower option (higher index)
     m_selectedOption++;
-    if (m_selectedOption >= static_cast<int>(m_options.size())) {
+    if (m_selectedOption >= GetOptionCount()) {
         m_selectedOption = 0;
     }
     m_showSelection = true;
@@ -168,7 +219,7 @@ void OptionsState::AdjustLeft() {
     auto* audioManager = GetEngine()->GetAudioManager();
     if (!audioManager) return;
 
-    if (m_selectedOption >= 0 && m_selectedOption < static_cast<int>(m_optionTypes.size())) {
+    if (m_selectedOption >= 0 && m_selectedOption < GetOptionCount()) {
         OptionType type = m_optionTypes[m_selectedOption];
 
         switch (type) {
@@ -192,7 +243,7 @@ void OptionsState::AdjustRight() {
     auto* audioManager = GetEngine()->GetAudioManager();
     if (!audioManager) return;
 
-    if (m_selectedOption >= 0 && m_selectedOption < static_cast<int>(m_optionTypes.size())) {
+    if (m_selectedOption >= 0 && m_selectedOption < GetOptionCount()) {
         OptionType type = m_optionTypes[m_selectedOption];
 
         switch (type) {
@@ -213,7 +264,9 @@ void OptionsState::AdjustRight() {
 }
 
 void OptionsState::SelectOption() {
-    if (m_selectedOption >= 0 && m_selectedOption < static_cast<int>(m_optionTypes.size())) {
+    // Ensure we have valid bounds
+    if (m_selectedOption >= 0 && m_selectedOption < GetOptionCount()) {
+
         OptionType type = m_optionTypes[m_selectedOption];
 
         switch (type) {
@@ -223,8 +276,19 @@ void OptionsState::SelectOption() {
             case OptionType::BACK_TO_MENU:
                 GoBack();
                 break;
+            case OptionType::VOLUME_MUSIC:
+                // Play a sound to indicate the option is responsive
+                if (GetEngine()->GetAudioManager()) {
+                    GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.7f);
+                }
+                break;
+            case OptionType::VOLUME_SOUND:
+                // Play a sound to indicate the option is responsive
+                if (GetEngine()->GetAudioManager()) {
+                    GetEngine()->GetAudioManager()->PlaySound("menu_select", m_soundVolume);
+                }
+                break;
             default:
-                // Volume options don't need special handling on select
                 break;
         }
     }
@@ -260,9 +324,10 @@ void OptionsState::DrawOptions() {
     int startY = 250;
     int spacing = 60;
 
-    for (size_t i = 0; i < m_options.size(); i++) {
-        int y = startY + static_cast<int>(i) * spacing;
-        bool isSelected = (static_cast<int>(i) == m_selectedOption);
+    int optionCount = GetOptionCount();
+    for (int i = 0; i < optionCount; i++) {
+        int y = startY + i * spacing;
+        bool isSelected = (i == m_selectedOption);
 
         Color textColor = isSelected && m_showSelection ?
             Color(255, 255, 100, 255) : Color(200, 200, 200, 255);
@@ -270,19 +335,17 @@ void OptionsState::DrawOptions() {
         std::string displayText = m_options[i];
 
         // Add value display for options
-        if (i < m_optionTypes.size()) {
-            OptionType type = m_optionTypes[i];
-            switch (type) {
-                case OptionType::VOLUME_MUSIC:
-                    displayText += GetVolumeDisplayText(m_musicVolume);
-                    break;
-                case OptionType::VOLUME_SOUND:
-                    displayText += GetVolumeDisplayText(m_soundVolume);
-                    break;
-                default:
-                    // No additional text for other options
-                    break;
-            }
+        OptionType type = m_optionTypes[i];
+        switch (type) {
+            case OptionType::VOLUME_MUSIC:
+                displayText += GetVolumeDisplayText(m_musicVolume);
+                break;
+            case OptionType::VOLUME_SOUND:
+                displayText += GetVolumeDisplayText(m_soundVolume);
+                break;
+            default:
+                // No additional text for other options
+                break;
         }
 
         BitmapFont::DrawText(renderer, displayText, 200, y, 2, textColor);
@@ -297,11 +360,7 @@ void OptionsState::DrawOptions() {
 void OptionsState::DrawInstructions() {
     auto* renderer = GetRenderer();
 
-    // Instructions
-    BitmapFont::DrawText(renderer, "ARROW KEYS: NAVIGATE", 50, 500, 1, Color(150, 150, 150, 255));
-    BitmapFont::DrawText(renderer, "LEFT/RIGHT: ADJUST VALUES", 50, 520, 1, Color(150, 150, 150, 255));
-    BitmapFont::DrawText(renderer, "ENTER: SELECT", 50, 540, 1, Color(150, 150, 150, 255));
-    int instructionY = 520;  // Fixed position for instructions
+    int instructionY = 500;  // Start position for instructions
 
     if (m_inKeybindingMode) {
         if (m_waitingForKey) {
@@ -316,8 +375,11 @@ void OptionsState::DrawInstructions() {
             }
         }
     } else {
-        BitmapFont::DrawText(renderer, "ARROW KEYS: Navigate  LEFT/RIGHT: Adjust  ENTER: Select", 30, instructionY, 1, Color(150, 150, 150, 255));
-        BitmapFont::DrawText(renderer, "B/ESC: Back to Menu", 30, instructionY + 20, 1, Color(150, 150, 150, 255));
+        // Main options menu instructions
+        BitmapFont::DrawText(renderer, "UP/DOWN: Navigate between options", 30, instructionY, 1, Color(150, 150, 150, 255));
+        BitmapFont::DrawText(renderer, "LEFT/RIGHT: Adjust volume settings", 30, instructionY + 20, 1, Color(150, 150, 150, 255));
+        BitmapFont::DrawText(renderer, "ENTER: Select option", 30, instructionY + 40, 1, Color(150, 150, 150, 255));
+        BitmapFont::DrawText(renderer, "B/ESC: Back to Main Menu", 30, instructionY + 60, 1, Color(150, 150, 150, 255));
     }
 }
 
@@ -336,7 +398,26 @@ void OptionsState::InitializeOptions() {
 
     m_options.push_back("Back to Menu");
     m_optionTypes.push_back(OptionType::BACK_TO_MENU);
+
+    // Ensure vectors are in sync
+    if (m_options.size() != m_optionTypes.size()) {
+        std::cerr << "CRITICAL ERROR: Options vectors out of sync after initialization!" << std::endl;
+        std::cerr << "  m_options.size(): " << m_options.size() << std::endl;
+        std::cerr << "  m_optionTypes.size(): " << m_optionTypes.size() << std::endl;
+    }
+
+    // Ensure we start with a valid selection
+    if (m_selectedOption < 0 || m_selectedOption >= GetOptionCount()) {
+        m_selectedOption = 0;
+    }
 }
+
+int OptionsState::GetOptionCount() const {
+    // Use the smaller of the two sizes to ensure we never go out of bounds
+    return static_cast<int>(std::min(m_options.size(), m_optionTypes.size()));
+}
+
+
 
 void OptionsState::EnterKeybindingMode() {
     m_inKeybindingMode = true;

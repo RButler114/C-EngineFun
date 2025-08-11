@@ -6,9 +6,13 @@
 #include "Engine/BitmapFont.h"
 #include "ECS/Component.h"
 #include "ECS/CombatSystems.h"
+#include "Game/PlayingState.h"
+#include "Engine/SpriteRenderer.h"
 #include <iostream>
 #include <algorithm>
 #include <random>
+#include <fstream>
+#include <sstream>
 #include <cmath>
 
 CombatState::CombatState()
@@ -27,12 +31,12 @@ CombatState::CombatState()
     , m_returnY(0.0f)
     , m_messageTimer(0.0f)
     , m_showActionMenu(false) {
-    
+
     // Load configuration
     if (!m_gameConfig->LoadConfigs()) {
         std::cerr << "Warning: Failed to load combat configs, using defaults" << std::endl;
     }
-    
+
     // Initialize available actions
     m_availableActions = {
         CombatAction::ATTACK,
@@ -106,6 +110,12 @@ void CombatState::OnExit() {
     if (GetEngine()->GetAudioManager()) {
         auto* audioManager = GetEngine()->GetAudioManager();
         audioManager->StopMusic();
+    // Log player sprite path for combat as well
+    {
+        const std::string path = m_gameConfig->GetPlayerSpritePath();
+        std::cout << "🎨 [Combat] Player sprite resolved from config: " << path << std::endl;
+    }
+
 
         // Restart background music if available
         audioManager->PlayMusic("background", m_gameConfig->GetBackgroundMusicVolume(), -1);
@@ -124,7 +134,7 @@ void CombatState::Update(float deltaTime) {
 
     // Update phase timer
     m_phaseTimer += deltaTime;
-    
+
     // Update based on current phase
     switch (m_currentPhase) {
         case CombatPhase::BATTLE_START:
@@ -149,7 +159,7 @@ void CombatState::Update(float deltaTime) {
             UpdateTransitionOut(deltaTime);
             break;
     }
-    
+
     // Combat systems are handled directly in the phase updates above
     // No separate EntityManager update needed
 }
@@ -187,7 +197,7 @@ void CombatState::Render() {
 void CombatState::HandleInput() {
     auto* input = GetInputManager();
     if (!input) return;
-    
+
     // Handle input based on current phase
     switch (m_currentPhase) {
         case CombatPhase::ACTION_SELECT:
@@ -204,7 +214,7 @@ void CombatState::HandleInput() {
             break;
         default:
             // Skip phases with space or enter
-            if (input->IsKeyJustPressed(SDL_SCANCODE_SPACE) || 
+            if (input->IsKeyJustPressed(SDL_SCANCODE_SPACE) ||
                 input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
                 m_phaseTimer = 999.0f; // Force phase advance
             }
@@ -242,14 +252,14 @@ void CombatState::InitializeCombat(Entity player, const std::vector<Entity>& ene
 }
 
 // Phase update methods (to be implemented)
-void CombatState::UpdateBattleStart(float deltaTime) {
+void CombatState::UpdateBattleStart([[maybe_unused]] float deltaTime) {
     if (m_phaseTimer >= 2.0f) {
         m_currentPhase = CombatPhase::TURN_START;
         m_phaseTimer = 0.0f;
     }
 }
 
-void CombatState::UpdateTurnStart(float deltaTime) {
+void CombatState::UpdateTurnStart([[maybe_unused]] float deltaTime) {
     if (m_phaseTimer >= 1.0f) {
         if (static_cast<size_t>(m_currentTurnIndex) < m_participants.size()) {
             const auto& participant = m_participants[m_currentTurnIndex];
@@ -265,26 +275,26 @@ void CombatState::UpdateTurnStart(float deltaTime) {
     }
 }
 
-void CombatState::UpdateActionSelect(float deltaTime) {
+void CombatState::UpdateActionSelect([[maybe_unused]] float deltaTime) {
     // Wait for player input - handled in HandleInput
 }
 
-void CombatState::UpdateActionExecute(float deltaTime) {
+void CombatState::UpdateActionExecute([[maybe_unused]] float deltaTime) {
     if (m_phaseTimer >= 1.0f) {
         const auto& participant = m_participants[m_currentTurnIndex];
-        
+
         if (participant.isPlayer) {
             ProcessPlayerAction();
         } else {
             ProcessEnemyAction(participant);
         }
-        
+
         m_currentPhase = CombatPhase::TURN_END;
         m_phaseTimer = 0.0f;
     }
 }
 
-void CombatState::UpdateTurnEnd(float deltaTime) {
+void CombatState::UpdateTurnEnd([[maybe_unused]] float deltaTime) {
     if (m_phaseTimer >= 1.5f) {
         if (IsBattleOver()) {
             m_currentPhase = CombatPhase::BATTLE_END;
@@ -297,19 +307,29 @@ void CombatState::UpdateTurnEnd(float deltaTime) {
     }
 }
 
-void CombatState::UpdateBattleEnd(float deltaTime) {
+void CombatState::UpdateBattleEnd([[maybe_unused]] float deltaTime) {
     // Show instruction to continue after a short delay
     if (m_phaseTimer >= 2.0f && m_messageTimer <= 0.0f) {
         ShowMessage("Press SPACE or ENTER to continue...", 999.0f); // Long duration
     }
 }
 
-void CombatState::UpdateTransitionOut(float deltaTime) {
+void CombatState::UpdateTransitionOut([[maybe_unused]] float deltaTime) {
     if (m_phaseTimer >= 1.0f) {
         // Return to playing state
         std::cout << "Combat ending - returning to playing state..." << std::endl;
-        if (GetStateManager()) {
-            GetStateManager()->PopState(); // Return to previous state
+        if (auto* stateMgr = GetStateManager()) {
+            // Before popping, adjust player position in the underlying PlayingState
+            auto* underlying = stateMgr->GetCurrentState(); // Currently CombatState
+            // Pop will resume underlying state (PlayingState) next
+            stateMgr->PopState();
+            auto* resumed = stateMgr->GetCurrentState();
+            if (resumed && resumed->GetType() == GameStateType::PLAYING) {
+                auto* playing = dynamic_cast<PlayingState*>(resumed);
+                if (playing) {
+                    playing->HandlePostCombatReturn();
+                }
+            }
         } else {
             std::cout << "ERROR: No state manager available for combat exit!" << std::endl;
         }
@@ -328,12 +348,12 @@ void CombatState::CalculateTurnOrder() {
         [](const CombatParticipant& a, const CombatParticipant& b) {
             return a.initiative > b.initiative;
         });
-    
+
     // Assign turn order
     for (size_t i = 0; i < m_participants.size(); ++i) {
         m_participants[i].turnOrder = static_cast<int>(i);
     }
-    
+
     m_currentTurnIndex = 0;
 }
 
@@ -494,7 +514,7 @@ void CombatState::ProcessEnemyAction(const CombatParticipant& participant) {
     }
 }
 
-void CombatState::ExecuteAttack(Entity attacker, Entity target) {
+void CombatState::ExecuteAttack([[maybe_unused]] Entity attacker, Entity target) {
     // Basic attack calculation
     int damage = 15 + (rand() % 10); // 15-25 damage
 
@@ -518,12 +538,12 @@ void CombatState::ExecuteAttack(Entity attacker, Entity target) {
     }
 }
 
-void CombatState::ExecuteDefend(Entity defender) {
+void CombatState::ExecuteDefend([[maybe_unused]] Entity defender) {
     ShowMessage("Defending! Damage reduced next turn.", 1.5f);
     // TODO: Apply defense buff
 }
 
-void CombatState::ExecuteMagic(Entity caster, Entity target) {
+void CombatState::ExecuteMagic([[maybe_unused]] Entity caster, [[maybe_unused]] Entity target) {
     // TODO: Implement magic system
 }
 
@@ -555,12 +575,12 @@ void CombatState::HandleActionSelection() {
     }
 }
 
-bool CombatState::CanUseMagic(Entity entity) const {
+bool CombatState::CanUseMagic([[maybe_unused]] Entity entity) const {
     // TODO: Check if entity has MP and magic abilities
     return true;
 }
 
-bool CombatState::CanUseItems(Entity entity) const {
+bool CombatState::CanUseItems([[maybe_unused]] Entity entity) const {
     // TODO: Check if entity has items in inventory
     return true;
 }
@@ -615,15 +635,55 @@ void CombatState::RenderParticipants() {
         const auto& participant = m_participants[i];
 
         if (participant.isPlayer) {
-            // Render player (blue rectangle)
-            Rectangle playerRect(playerX, playerY, 32, 48);
-            renderer->DrawRectangle(playerRect, Color(100, 150, 255, 255), true);
+            // Render player sprite
+            int spriteW = m_gameConfig->GetAnimationSpriteWidth();
+            int spriteH = m_gameConfig->GetAnimationSpriteHeight();
+            int totalFrames = m_gameConfig->GetAnimationTotalFrames();
+            float spriteScale = m_gameConfig->GetAnimationSpriteScale();
+
+            // Simple idle animation cycle based on phase timer
+            int frameIndex = static_cast<int>(std::fmod(m_phaseTimer * 5.0f, static_cast<float>(totalFrames)));
+            SpriteFrame frame = SpriteRenderer::CreateFrame(frameIndex, spriteW, spriteH, totalFrames);
+            const std::string playerSpritePath = m_gameConfig->GetPlayerSpritePath();
+            // Player should face right on the left side of the screen
+            SpriteRenderer::RenderSprite(renderer, playerSpritePath,
+                                         playerX, playerY, frame, /*flipHorizontal=*/false, spriteScale);
         } else {
-            // Render enemy (red rectangle)
+            // Render enemy using frog sprite
             int x = enemyStartX;
             int y = enemyY + enemyIndex * enemySpacing; // Offset for multiple enemies
-            Rectangle enemyRect(x, y, 28, 44);
-            renderer->DrawRectangle(enemyRect, Color(255, 100, 100, 255), true);
+            static std::shared_ptr<Texture> frog;
+            static std::vector<SpriteFrame> idle;
+            static bool loaded = false;
+            if (!loaded) {
+                frog = renderer->LoadTexture("assets/sprites/enemies/frog/frog.png");
+                std::ifstream in("assets/sprites/enemies/frog/frog.spritepos");
+                if (in) {
+                    std::string line;
+                    while (std::getline(in, line)) {
+                        if (line.rfind("idle", 0) == 0) {
+                            auto colon = line.find(':');
+                            if (colon != std::string::npos) {
+                                std::istringstream iss(line.substr(colon + 1));
+                                int fx, fy, fw, fh;
+                                if (iss >> fx >> fy >> fw >> fh) idle.emplace_back(fx, fy, fw, fh);
+                            }
+                        }
+                    }
+                }
+                loaded = true;
+            }
+            if (frog && !idle.empty()) {
+                int fi = static_cast<int>(std::fmod(m_phaseTimer * 5.0f, static_cast<float>(idle.size())));
+                const SpriteFrame& f = idle[fi];
+                Rectangle src(f.x, f.y, f.width, f.height);
+                Rectangle dest(x, y, 28, 44);
+                // Enemies on right should face left in combat as well
+                renderer->DrawTexture(frog, src, dest, true, false);
+            } else {
+                Rectangle enemyRect(x, y, 28, 44);
+                renderer->DrawRectangle(enemyRect, Color(255, 100, 100, 255), true);
+            }
             enemyIndex++;
         }
     }
