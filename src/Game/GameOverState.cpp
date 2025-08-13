@@ -6,6 +6,7 @@
  */
 
 #include "Game/GameOverState.h"
+#include "Game/PlayingState.h"
 #include "Game/GameStateManager.h"
 #include "Engine/Renderer.h"
 #include "Engine/InputManager.h"
@@ -42,10 +43,15 @@ GameOverState::GameOverState()
  * @note Display sequence: Game Over message → Score → Restart options
  */
 void GameOverState::OnEnter() {
-    std::cout << "💀 Game Over - Final Score: " << m_finalScore << std::endl;
+    if (m_outcome == Outcome::WIN) {
+        std::cout << "🎉 Victory - Final Score: " << m_finalScore << " | Run Total: " << m_runTotal << std::endl;
+    } else {
+        std::cout << "💀 Game Over - Final Score: " << m_finalScore << std::endl;
+    }
 
-    // Determine if score qualifies for leaderboard; if so, collect initials
-    m_collectingInitials = HighScoreManager::WouldQualify(m_finalScore);
+    // For end-of-run victories (no next level), use run total for high score qualification
+    int scoreForHighScore = (m_outcome == Outcome::WIN && m_nextLevel.empty()) ? m_runTotal : m_finalScore;
+    m_collectingInitials = HighScoreManager::WouldQualify(scoreForHighScore);
     m_initials.clear();
     m_initialsRepeatCooldown = 0.0f;
     m_backspaceCooldown = 0.0f;
@@ -53,6 +59,16 @@ void GameOverState::OnEnter() {
 
     // if (GetEngine()->GetAudioManager()) {
     //     GetEngine()->GetAudioManager()->PlaySound("game_over");
+    // If this is a WIN with no next level, auto-switch to initials for cumulative run total
+    if (m_outcome == Outcome::WIN && m_nextLevel.empty()) {
+        // Treat m_finalScore as the cumulative total for submission
+        m_collectingInitials = HighScoreManager::WouldQualify(m_runTotal > 0 ? m_runTotal : m_finalScore);
+        if (!m_collectingInitials) {
+            // No initials needed; allow immediate restart/menu prompt
+            m_showRestartPrompt = true;
+        }
+    }
+
     // }
 }
 
@@ -81,6 +97,13 @@ void GameOverState::OnExit() {
 void GameOverState::Update(float deltaTime) {
     // Accumulate time for controlling display sequence
     m_displayTimer += deltaTime;
+
+    // Auto-submit run total immediately if it's an end-of-run victory and no initials required
+    if (m_outcome == Outcome::WIN && m_nextLevel.empty() && !m_collectingInitials) {
+        if (m_runTotal > 0) {
+            HighScoreManager::SubmitEntry(HighScoreManager::Entry{"YOU", m_runTotal, ""});
+        }
+    }
 
     // Show restart prompt after 2 seconds of displaying score
     // This gives players time to see their final score before showing options
@@ -115,6 +138,22 @@ void GameOverState::Render() {
 void GameOverState::HandleInput() {
     auto* input = GetInputManager();
     if (!input) return;
+            // If we just finished a level in a run, add level score to run total now
+            if (m_outcome == Outcome::WIN) {
+                if (auto* manager = GetStateManager()) {
+                    if (auto* ps = dynamic_cast<PlayingState*>(manager->GetState(GameStateType::PLAYING))) {
+                        ps->AddToRunTotal(m_finalScore);
+                        if (!m_nextLevel.empty()) {
+                            ps->LoadLevelAndReset(m_nextLevel);
+                        } else {
+                            // End of run: submit to highscores
+                            HighScoreManager::SubmitEntry(HighScoreManager::Entry{"YOU", ps->GetTotalRunScore(), ""});
+                            ps->ResetRunTotal();
+                        }
+                    }
+                }
+            }
+
 
     if (m_collectingInitials) {
         HandleInitialsInput();
@@ -124,19 +163,31 @@ void GameOverState::HandleInput() {
     // fall through to normal prompt handling below
 
     if (m_showRestartPrompt) {
-        // Restart game
+        auto* manager = GetStateManager();
+        // Primary action: Enter/Space
         if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN) || input->IsKeyJustPressed(SDL_SCANCODE_SPACE)) {
-            std::cout << "Restarting game..." << std::endl;
-            if (GetStateManager()) {
-                GetStateManager()->ChangeState(GameStateType::PLAYING);
+            if (m_outcome == Outcome::WIN) {
+                if (!m_nextLevel.empty()) {
+                    std::cout << "Proceeding to next level: " << m_nextLevel << std::endl;
+                } else {
+                    std::cout << "Run complete! Returning to Playing to start new run." << std::endl;
+                }
+                if (manager) {
+                    manager->ChangeState(GameStateType::PLAYING);
+                }
+            } else {
+                std::cout << "Restarting game..." << std::endl;
+                if (manager) {
+                    manager->ChangeState(GameStateType::PLAYING);
+                }
             }
         }
 
-        // Return to menu
+        // Secondary action: Escape/Menu goes back to main menu
         if (input->IsKeyJustPressed(SDL_SCANCODE_ESCAPE) || input->IsKeyJustPressed(SDL_SCANCODE_M)) {
             std::cout << "Returning to menu..." << std::endl;
-            if (GetStateManager()) {
-                GetStateManager()->ChangeState(GameStateType::MENU);
+            if (manager) {
+                manager->ChangeState(GameStateType::MENU);
             }
         }
     }
@@ -190,21 +241,22 @@ void GameOverState::DrawGameOverScreen() {
     renderer->DrawRectangle(Rectangle(0, 0, screenW, screenH), Color(20, 20, 20, 255), true);
 
     // Title area with generous top margin
-    const char* gameOverText = "GAME OVER";
+    const char* title = (m_outcome == Outcome::WIN) ? "VICTORY" : "GAME OVER";
+    Color titleColor = (m_outcome == Outcome::WIN) ? Color(80, 255, 80, 255) : Color(255, 80, 80, 255);
     int titleScale = 6;
-    int textWidth = static_cast<int>(strlen(gameOverText)) * 6 * titleScale;
+    int textWidth = static_cast<int>(strlen(title)) * 6 * titleScale;
     int startX = (screenW - textWidth) / 2;
     int textY = 120; // was 200; move up to create space for score and prompts
 
-    BitmapFont::DrawText(renderer, gameOverText, startX, textY, titleScale, Color(255, 80, 80, 255));
+    BitmapFont::DrawText(renderer, title, startX, textY, titleScale, titleColor);
 }
 
 void GameOverState::DrawScore() {
     auto* renderer = GetRenderer();
 
     int screenW = 800;
-    // Final score with breathing room below the title
-    std::string scoreText = "FINAL SCORE";
+    // Use run total display on victory (shows both)
+    std::string scoreText = (m_outcome == Outcome::WIN) ? "LEVEL SCORE" : "FINAL SCORE";
     std::string scoreValue = std::to_string(m_finalScore);
 
     int labelScale = 2;
@@ -220,6 +272,20 @@ void GameOverState::DrawScore() {
     int valueX = (screenW - valueWidth) / 2;
     int valueY = labelY + 40;
     BitmapFont::DrawText(renderer, scoreValue, valueX, valueY, valueScale, Color(255, 255, 0, 255));
+
+    if (m_outcome == Outcome::WIN) {
+        std::string totalText = "RUN TOTAL";
+        std::string totalValue = std::to_string(m_runTotal);
+        int tLabelWidth = static_cast<int>(totalText.length()) * 6 * labelScale;
+        int tLabelX = (screenW - tLabelWidth) / 2;
+        int tLabelY = valueY + 48;
+        BitmapFont::DrawText(renderer, totalText, tLabelX, tLabelY, labelScale, Color(180, 220, 255, 255));
+
+        int tValueWidth = static_cast<int>(totalValue.length()) * 6 * valueScale;
+        int tValueX = (screenW - tValueWidth) / 2;
+        int tValueY = tLabelY + 34;
+        BitmapFont::DrawText(renderer, totalValue, tValueX, tValueY, valueScale, Color(180, 255, 180, 255));
+    }
 }
 
 void GameOverState::DrawRestartPrompt() {
@@ -229,12 +295,14 @@ void GameOverState::DrawRestartPrompt() {
     int padY = 24;
 
     // Split prompts with spacing near bottom area
-    const char* restartText = "PRESS ENTER TO PLAY AGAIN";
+    bool isWin = (m_outcome == Outcome::WIN);
+    std::string primary = isWin ? (m_nextLevel.empty() ? "PRESS ENTER TO CONTINUE" : ("PRESS ENTER FOR NEXT LEVEL: " + m_nextLevel))
+                                : "PRESS ENTER TO PLAY AGAIN";
     int restartScale = 2;
-    int restartWidth = static_cast<int>(strlen(restartText)) * 6 * restartScale;
+    int restartWidth = static_cast<int>(primary.length()) * 6 * restartScale;
     int restartX = (screenW - restartWidth) / 2;
     int restartY = screenH - 150;
-    BitmapFont::DrawText(renderer, restartText, restartX, restartY, restartScale, Color(255, 255, 255, 255));
+    BitmapFont::DrawText(renderer, primary.c_str(), restartX, restartY, restartScale, Color(255, 255, 255, 255));
 
     const char* menuText = "ESC: MENU   Q: QUIT";
     int menuScale = 1;

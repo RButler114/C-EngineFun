@@ -244,6 +244,18 @@ void MenuState::NavigateDown() {
     }
     m_showSelection = true;
     m_blinkTimer = 0.0f;
+    // Update scroll to keep selection visible
+    if (auto* r = GetRenderer()) {
+        int lw=0, lh=0; r->GetLogicalSize(lw, lh);
+        m_maxVisibleMenuItems = std::max(1, lh / (int)(60 * BitmapFont::GetGlobalScale()) - 3);
+        if (m_selectedOption < m_menuScrollOffset) m_menuScrollOffset = m_selectedOption;
+        if (m_selectedOption >= m_menuScrollOffset + m_maxVisibleMenuItems)
+            m_menuScrollOffset = m_selectedOption - m_maxVisibleMenuItems + 1;
+        if (m_menuScrollOffset < 0) m_menuScrollOffset = 0;
+        if (m_menuScrollOffset > std::max(0, (int)m_menuOptions.size() - m_maxVisibleMenuItems))
+            m_menuScrollOffset = std::max(0, (int)m_menuOptions.size() - m_maxVisibleMenuItems);
+    }
+
 
     // Play menu navigation sound
     if (GetEngine()->GetAudioManager()) {
@@ -252,6 +264,7 @@ void MenuState::NavigateDown() {
 
     std::cout << "🔽 Menu navigation DOWN - Selected option: " << m_selectedOption << " (" << m_menuOptions[m_selectedOption] << ")" << std::endl;
 }
+
 
 void MenuState::SelectOption() {
     MenuOption option = MenuOption::START_GAME;
@@ -350,41 +363,51 @@ void MenuState::DrawTitle() {
 
 void MenuState::DrawMenu() {
     auto* renderer = GetRenderer();
+    int lw=0, lh=0; renderer->GetLogicalSize(lw, lh);
+    float ui = BitmapFont::GetGlobalScale();
+    int lineHeight = (int)(60 * ui);
+    int initialVisible = std::min((int)m_menuOptions.size(), std::max(1, lh / lineHeight - 3));
+    int blockHeight = initialVisible * lineHeight;
+    int menuStartY = (lh - blockHeight) / 2;
 
-    int menuStartY = 350;
-    int menuSpacing = 60;
+    int menuSpacing = lineHeight;
 
-    for (int i = 0; i < static_cast<int>(m_menuOptions.size()); i++) {
-        int optionY = menuStartY + i * menuSpacing;
+    int total = (int)m_menuOptions.size();
+    int visibleCount = std::min(m_maxVisibleMenuItems > 0 ? m_maxVisibleMenuItems : total,
+                                std::min(total, std::max(1, lh / lineHeight - 3)));
+    // Ensure scroll offset is sane
+    if (m_menuScrollOffset > std::max(0, total - visibleCount)) m_menuScrollOffset = std::max(0, total - visibleCount);
+
+    for (int idx = 0; idx < visibleCount; ++idx) {
+        int i = m_menuScrollOffset + idx;
+        if (i >= total) break;
+        int optionY = menuStartY + idx * menuSpacing;
         bool isSelected = (i == m_selectedOption);
 
-        // Calculate text width for centering
-        int textWidth = m_menuOptions[i].length() * 16;
-        int textX = (800 - textWidth) / 2;
+        // Calculate text width for centering (scale-aware approximation)
+        int textWidth = (int)(m_menuOptions[i].length() * 8 * 2);
+        int textX = (lw - textWidth) / 2;
 
         // Draw selection indicator
         if (isSelected && m_showSelection) {
-            // Draw selection box with more prominent colors
             Rectangle selectionRect(textX - 20, optionY - 5, textWidth + 40, 30);
-            renderer->DrawRectangle(selectionRect, Color(255, 255, 0, 150), true); // Bright yellow background
-            renderer->DrawRectangle(selectionRect, Color(255, 0, 0, 255), false); // Red outline
-
-            // Draw larger, more visible arrows
-            for (int i = 0; i < 3; i++) {
-                renderer->DrawLine(textX - 40, optionY + 8 + i, textX - 25, optionY + 8 + i, Color(255, 0, 0, 255));
-                renderer->DrawLine(textX + textWidth + 25, optionY + 8 + i, textX + textWidth + 40, optionY + 8 + i, Color(255, 0, 0, 255));
+            renderer->DrawRectangle(selectionRect, Color(255, 255, 0, 150), true);
+            renderer->DrawRectangle(selectionRect, Color(255, 0, 0, 255), false);
+            for (int j = 0; j < 3; j++) {
+                renderer->DrawLine(textX - 40, optionY + 8 + j, textX - 25, optionY + 8 + j, Color(255, 0, 0, 255));
+                renderer->DrawLine(textX + textWidth + 25, optionY + 8 + j, textX + textWidth + 40, optionY + 8 + j, Color(255, 0, 0, 255));
             }
         }
 
         // Draw menu text using bitmap font
         Color textColor = isSelected ? Color(255, 255, 0, 255) : Color(220, 220, 220, 255);
-        BitmapFont::DrawText(renderer, m_menuOptions[i], textX, optionY, 2, textColor); // Scale 2
+        BitmapFont::DrawText(renderer, m_menuOptions[i], textX, optionY, 2, textColor);
     }
 
     // Draw instructions at bottom using bitmap font
-    std::string instructions = "USE ARROW KEYS TO NAVIGATE - ENTER TO SELECT - ESC TO QUIT";
-    int instrWidth = instructions.length() * 6 * 1; // 6 pixels per char * 1 scale
-    int instrX = (800 - instrWidth) / 2;
-
-    BitmapFont::DrawText(renderer, instructions, instrX, 550, 1, Color(200, 200, 200, 255)); // Gray, scale 1
+    std::string instructions = "ARROWS: Navigate  ENTER: Select  ESC: Quit  PGUP/PGDN: Page";
+    int instrWidth = (int)(instructions.length() * 6);
+    int instrX = (lw - instrWidth) / 2;
+    int instrY = lh - (int)(40 * ui);
+    BitmapFont::DrawText(renderer, instructions, instrX, instrY, 1, Color(200, 200, 200, 255));
 }

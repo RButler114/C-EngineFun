@@ -166,54 +166,43 @@ private:
      */
     bool m_showSelection;
 
+    // Scrolling/layout for menu
+    int m_menuScrollOffset = 0;
+    int m_maxVisibleMenuItems = 0;
+
     // ========== PRIVATE HELPER METHODS ==========
 
     /**
      * @brief Move selection up to previous option
-     *
-     * Moves selection up with wraparound (top option wraps to bottom).
-     * Includes visual/audio feedback for navigation.
      */
     void NavigateUp();
 
     /**
      * @brief Move selection down to next option
-     *
-     * Moves selection down with wraparound (bottom option wraps to top).
-     * Includes visual/audio feedback for navigation.
      */
     void NavigateDown();
 
     /**
      * @brief Execute the currently selected menu option
-     *
-     * Performs the action associated with the current selection:
-     * - START_GAME: Transition to playing state
-     * - OPTIONS: Transition to options state
-     * - QUIT: Exit application
      */
     void SelectOption();
 
     /**
      * @brief Draw the game title/logo
-     *
-     * Renders the main game title with styling and effects.
      */
     void DrawTitle();
 
     /**
      * @brief Draw menu options with selection highlighting
-     *
-     * Renders all menu options with appropriate highlighting
-     * for the currently selected option.
      */
     void DrawMenu();
 
     /**
      * @brief Draw background graphics and effects
-     *
-     * Renders background visuals, animations, or patterns
-     * to make the menu visually appealing.
      */
     void DrawBackground();
+
+    // Layout helpers
+    void CalculateMenuLayout();
+    void UpdateMenuScroll();
 };

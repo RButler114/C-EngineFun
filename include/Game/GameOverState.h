@@ -135,6 +135,16 @@ public:
      */
     void SetScore(int score) { m_finalScore = score; }
 
+	    // Outcome mode
+	    enum class Outcome { LOSE, WIN };
+	    void SetOutcome(Outcome o) { m_outcome = o; }
+	    Outcome GetOutcome() const { return m_outcome; }
+	    void SetNextLevel(const std::string& lvl) { m_nextLevel = lvl; }
+	    const std::string& GetNextLevel() const { return m_nextLevel; }
+	    void SetRunTotal(int total) { m_runTotal = total; }
+	    int GetRunTotal() const { return m_runTotal; }
+
+
 private:
     // ========== GAME OVER DATA ==========
 
@@ -168,6 +178,12 @@ private:
     bool m_collectingInitials{false};
     std::string m_initials; // up to 3 chars
     float m_caretTimer{0.0f};
+
+	    // Victory/defeat and progression fields
+	    Outcome m_outcome{Outcome::LOSE};
+	    std::string m_nextLevel;
+	    int m_runTotal{0};
+
     bool m_caretOn{true};
 
     // Optional: guard against ultra-fast repeat on first press

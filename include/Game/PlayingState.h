@@ -243,6 +243,22 @@ private:
      */
     float m_playerVelY;
 
+    // Accumulated total score across levels in a run
+    int m_totalRunScore{0};
+    // Track whether boss has been defeated in this level
+    bool m_bossDefeated{false};
+
+public:
+    // Accessors and helpers for run progression
+    int GetScore() const { return m_score; }
+    int GetTotalRunScore() const { return m_totalRunScore; }
+    void ResetRunTotal() { m_totalRunScore = 0; }
+    void AddToRunTotal(int amount) { m_totalRunScore += amount; }
+    void LoadLevelAndReset(const std::string& levelName);
+
+private:
+
+
     // ========== COLLISION SYSTEM ==========
 
     /**
@@ -338,12 +354,24 @@ private:
      */
     void ResetGameState();
 public:
+
     /**
      * @brief Adjust player position and cooldown on return from combat
      *
      * Moves the player slightly away from the last enemy to avoid
      * immediate re-trigger of combat and applies an extended cooldown.
      */
+
+public:
+    /**
+     * @brief Handle end of a combat encounter
+     * @param playerWon true if player won
+     * @param wasBossEncounter true if the encounter was flagged as a boss fight
+     */
+    void OnCombatEnded(bool playerWon, bool wasBossEncounter);
+
+private:
+
     void HandlePostCombatReturn();
 
 private:

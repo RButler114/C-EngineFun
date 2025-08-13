@@ -1,9 +1,15 @@
 /**
+#include "Engine/ConfigSystem.h"
+#include "Engine/Window.h"
+
  * @file OptionsState.cpp
  * @brief Simple options menu implementation for arcade games
  * @author Ryan Butler
  * @date 2025
  */
+
+#include "Engine/ConfigSystem.h"
+#include "Engine/Window.h"
 
 #include "Game/OptionsState.h"
 #include "Game/GameStateManager.h"
@@ -15,6 +21,17 @@
 #include "Engine/KeybindingManager.h"
 #include <iostream>
 #include <algorithm>
+#include <cmath>
+static void LoadVisualSnapshot(bool& fs, bool& vsync, int& w, int& h, int& fps) {
+    ConfigManager cfg; if (cfg.LoadFromFile("assets/config/gameplay.ini")) {
+        fs = cfg.Get("visual","fullscreen", false).AsBool();
+        vsync = cfg.Get("visual","vsync", true).AsBool();
+        w = cfg.Get("visual","screen_width", 800).AsInt();
+        h = cfg.Get("visual","screen_height", 600).AsInt();
+        fps = cfg.Get("visual","fps_limit", 60).AsInt();
+    }
+}
+
 
 OptionsState::OptionsState()
     : GameState(GameStateType::OPTIONS, "Options")
@@ -23,12 +40,19 @@ OptionsState::OptionsState()
     , m_showSelection(true)
     , m_musicVolume(0.5f)
     , m_soundVolume(0.7f)
+    , m_resolutions{}
+    , m_resolutionIndex(0)
+    , m_fullscreen(false)
     , m_keybindingManager(std::make_unique<KeybindingManager>())
     , m_inKeybindingMode(false)
     , m_selectedKeybinding(0)
     , m_waitingForKey(false)
     , m_keyToRebind(GameAction::ACTION_COUNT)
     , m_rebindingPrimary(true)
+    , m_vsync(true)
+    , m_fpsOptions{0, 30, 60, 120, 144}
+    , m_fpsIndex(2)
+
     , m_keybindingScrollOffset(0)
     , m_maxVisibleKeybindings(0) {
 
@@ -85,6 +109,14 @@ void OptionsState::Update(float deltaTime) {
     // Update selection blink effect
     m_blinkTimer += deltaTime;
     if (m_blinkTimer >= 0.5f) {
+    // Auto-revert timer for pending video changes
+    if (m_videoAwaitingConfirm) {
+        m_videoRevertTimer -= deltaTime;
+        if (m_videoRevertTimer <= 0.0f) {
+            RevertVideoChanges();
+        }
+    }
+
         m_showSelection = !m_showSelection;
         m_blinkTimer = 0.0f;
     }
@@ -115,6 +147,24 @@ void OptionsState::HandleInput() {
     } else {
         // Navigation - using IsKeyPressed with debouncing since IsKeyJustPressed has issues
         static bool upWasPressed = false;
+    // Section jump shortcuts: PageUp/PageDown
+    if (input->IsKeyJustPressed(SDL_SCANCODE_PAGEUP)) {
+        for (int i = m_selectedOption - 1; i >= 0; --i) {
+            if (m_optionTypes[i] == OptionType::HEADER_VIDEO || m_optionTypes[i] == OptionType::HEADER_AUDIO || m_optionTypes[i] == OptionType::HEADER_CONTROLS) {
+                m_selectedOption = i;
+                break;
+            }
+        }
+    }
+    if (input->IsKeyJustPressed(SDL_SCANCODE_PAGEDOWN)) {
+        for (int i = m_selectedOption + 1; i < GetOptionCount(); ++i) {
+            if (m_optionTypes[i] == OptionType::HEADER_VIDEO || m_optionTypes[i] == OptionType::HEADER_AUDIO || m_optionTypes[i] == OptionType::HEADER_CONTROLS) {
+                m_selectedOption = i;
+                break;
+            }
+        }
+    }
+
         static bool downWasPressed = false;
         static bool wWasPressed = false;
         static bool sWasPressed = false;
@@ -202,6 +252,18 @@ void OptionsState::NavigateUp() {
     if (GetEngine()->GetAudioManager()) {
         GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
     }
+    // Keep selected option within visible window
+    if (auto* r = GetRenderer()) {
+        int lw=0, lh=0; r->GetLogicalSize(lw, lh);
+        int spacing = (int)(60 * BitmapFont::GetGlobalScale());
+        int maxVisible = std::max(1, (lh - (int)(200*BitmapFont::GetGlobalScale()) - (int)(120*BitmapFont::GetGlobalScale())) / spacing);
+        if (m_selectedOption < m_optionsScrollOffset) m_optionsScrollOffset = m_selectedOption;
+        if (m_selectedOption >= m_optionsScrollOffset + maxVisible)
+            m_optionsScrollOffset = m_selectedOption - maxVisible + 1;
+        if (m_optionsScrollOffset < 0) m_optionsScrollOffset = 0;
+        if (m_optionsScrollOffset > std::max(0, GetOptionCount() - maxVisible))
+            m_optionsScrollOffset = std::max(0, GetOptionCount() - maxVisible);
+    }
 }
 
 void OptionsState::NavigateDown() {
@@ -223,9 +285,47 @@ void OptionsState::AdjustLeft() {
     if (!audioManager) return;
 
     if (m_selectedOption >= 0 && m_selectedOption < GetOptionCount()) {
+        // Skip headers
+        if (m_optionTypes[m_selectedOption] == OptionType::HEADER_VIDEO ||
+            m_optionTypes[m_selectedOption] == OptionType::HEADER_AUDIO ||
+            m_optionTypes[m_selectedOption] == OptionType::HEADER_CONTROLS) {
+            return;
+        }
+
+    // Keep selected option within visible window
+    if (auto* r = GetRenderer()) {
+        int lw=0, lh=0; r->GetLogicalSize(lw, lh);
+        int spacing = (int)(60 * BitmapFont::GetGlobalScale());
+        int maxVisible = std::max(1, (lh - (int)(200*BitmapFont::GetGlobalScale()) - (int)(120*BitmapFont::GetGlobalScale())) / spacing);
+        if (m_selectedOption < m_optionsScrollOffset) m_optionsScrollOffset = m_selectedOption;
+        if (m_selectedOption >= m_optionsScrollOffset + maxVisible)
+            m_optionsScrollOffset = m_selectedOption - maxVisible + 1;
+        if (m_optionsScrollOffset < 0) m_optionsScrollOffset = 0;
+        if (m_optionsScrollOffset > std::max(0, GetOptionCount() - maxVisible))
+            m_optionsScrollOffset = std::max(0, GetOptionCount() - maxVisible);
+    }
+
         OptionType type = m_optionTypes[m_selectedOption];
 
         switch (type) {
+            case OptionType::RESOLUTION:
+                if (!m_resolutions.empty()) {
+                    int n = static_cast<int>(m_resolutions.size());
+                    m_resolutionIndex = (m_resolutionIndex - 1 + n) % n;
+                }
+                break;
+            case OptionType::FULLSCREEN:
+                m_fullscreen = !m_fullscreen;
+                break;
+            case OptionType::VSYNC:
+                m_vsync = !m_vsync;
+                break;
+            case OptionType::FPS_LIMIT:
+                if (!m_fpsOptions.empty()) {
+                    int n = static_cast<int>(m_fpsOptions.size());
+                    m_fpsIndex = (m_fpsIndex - 1 + n) % n;
+                }
+                break;
             case OptionType::VOLUME_MUSIC:
                 m_musicVolume = std::max(0.0f, m_musicVolume - 0.1f);
                 audioManager->SetMusicVolume(m_musicVolume);
@@ -236,7 +336,19 @@ void OptionsState::AdjustLeft() {
                 audioManager->PlaySound("menu_select", m_soundVolume);
                 break;
             default:
-                // Other options don't support left/right adjustment
+    // Keep selected option within visible window
+    if (auto* r = GetRenderer()) {
+        int lw=0, lh=0; r->GetLogicalSize(lw, lh);
+        int spacing = (int)(60 * BitmapFont::GetGlobalScale());
+        int maxVisible = std::max(1, (lh - (int)(200*BitmapFont::GetGlobalScale()) - (int)(120*BitmapFont::GetGlobalScale())) / spacing);
+        if (m_selectedOption < m_optionsScrollOffset) m_optionsScrollOffset = m_selectedOption;
+        if (m_selectedOption >= m_optionsScrollOffset + maxVisible)
+            m_optionsScrollOffset = m_selectedOption - maxVisible + 1;
+        if (m_optionsScrollOffset < 0) m_optionsScrollOffset = 0;
+        if (m_optionsScrollOffset > std::max(0, GetOptionCount() - maxVisible))
+            m_optionsScrollOffset = std::max(0, GetOptionCount() - maxVisible);
+    }
+
                 break;
         }
     }
@@ -247,9 +359,34 @@ void OptionsState::AdjustRight() {
     if (!audioManager) return;
 
     if (m_selectedOption >= 0 && m_selectedOption < GetOptionCount()) {
+        // Skip headers
+        if (m_optionTypes[m_selectedOption] == OptionType::HEADER_VIDEO ||
+            m_optionTypes[m_selectedOption] == OptionType::HEADER_AUDIO ||
+            m_optionTypes[m_selectedOption] == OptionType::HEADER_CONTROLS) {
+            return;
+        }
+
         OptionType type = m_optionTypes[m_selectedOption];
 
         switch (type) {
+            case OptionType::RESOLUTION:
+                if (!m_resolutions.empty()) {
+                    int n = static_cast<int>(m_resolutions.size());
+                    m_resolutionIndex = (m_resolutionIndex + 1) % n;
+                }
+                break;
+            case OptionType::FULLSCREEN:
+                m_fullscreen = !m_fullscreen;
+                break;
+            case OptionType::VSYNC:
+                m_vsync = !m_vsync;
+                break;
+            case OptionType::FPS_LIMIT:
+                if (!m_fpsOptions.empty()) {
+                    int n = static_cast<int>(m_fpsOptions.size());
+                    m_fpsIndex = (m_fpsIndex + 1) % n;
+                }
+                break;
             case OptionType::VOLUME_MUSIC:
                 m_musicVolume = std::min(1.0f, m_musicVolume + 0.1f);
                 audioManager->SetMusicVolume(m_musicVolume);
@@ -260,7 +397,6 @@ void OptionsState::AdjustRight() {
                 audioManager->PlaySound("menu_select", m_soundVolume);
                 break;
             default:
-                // Other options don't support left/right adjustment
                 break;
         }
     }
@@ -272,6 +408,11 @@ void OptionsState::SelectOption() {
 
         OptionType type = m_optionTypes[m_selectedOption];
 
+        // Skip headers - no action on ENTER
+        if (type == OptionType::HEADER_VIDEO || type == OptionType::HEADER_AUDIO || type == OptionType::HEADER_CONTROLS) {
+            return;
+        }
+
         switch (type) {
             case OptionType::KEYBINDINGS:
                 EnterKeybindingMode();
@@ -279,14 +420,34 @@ void OptionsState::SelectOption() {
             case OptionType::BACK_TO_MENU:
                 GoBack();
                 break;
+            case OptionType::RESOLUTION:
+            case OptionType::FULLSCREEN:
+            case OptionType::VSYNC:
+            case OptionType::FPS_LIMIT:
+                // Mark pending; apply after user confirms
+                m_videoPendingChanges = true;
+                break;
+            case OptionType::APPLY_CHANGES:
+                ApplyVideoChanges();
+                break;
+            case OptionType::CANCEL_CHANGES:
+                RevertVideoChanges();
+                break;
+            case OptionType::CONFIRM_CHANGES:
+                // Finalize applied changes by cancelling the auto-revert window
+                m_videoAwaitingConfirm = false;
+                m_videoRevertTimer = 0.0f;
+                m_hasPrevSnapshot = false; // snapshot no longer needed
+                break;
+            case OptionType::STANDARDIZE:
+                StandardizeVideoSettings();
+                break;
             case OptionType::VOLUME_MUSIC:
-                // Play a sound to indicate the option is responsive
                 if (GetEngine()->GetAudioManager()) {
                     GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.7f);
                 }
                 break;
             case OptionType::VOLUME_SOUND:
-                // Play a sound to indicate the option is responsive
                 if (GetEngine()->GetAudioManager()) {
                     GetEngine()->GetAudioManager()->PlaySound("menu_select", m_soundVolume);
                 }
@@ -307,58 +468,105 @@ void OptionsState::GoBack() {
 }
 
 void OptionsState::DrawBackground() {
+
     auto* renderer = GetRenderer();
 
-    // Simple gradient background
-    for (int y = 0; y < 600; y++) {
-        int intensity = 20 + (y * 30) / 600;
+    // Simple gradient background (based on logical size)
+    int logicalW = 800, logicalH = 600;
+    // We can draw within logical coordinates; background lines up to H
+    for (int y = 0; y < logicalH; y++) {
+        int intensity = 20 + (y * 30) / logicalH;
         Color bgColor(intensity, intensity, intensity + 10, 255);
-        renderer->DrawLine(0, y, 800, y, bgColor);
+        renderer->DrawLine(0, y, logicalW, y, bgColor);
     }
 }
 
 void OptionsState::DrawTitle() {
     auto* renderer = GetRenderer();
 
+    float uiScale = BitmapFont::GetGlobalScale();
     // Title
-    BitmapFont::DrawText(renderer, "OPTIONS", 320, 100, 3, Color(255, 255, 100, 255));
+    BitmapFont::DrawText(renderer, "OPTIONS", (int)(320*uiScale), (int)(100*uiScale), (int)std::max(1.0f, 3*uiScale), Color(255, 255, 100, 255));
 }
 
 void OptionsState::DrawOptions() {
     auto* renderer = GetRenderer();
 
-    int startY = 250;
-    int spacing = 60;
+    // Scale/layout by UI scale and logical size
+    float uiScale = BitmapFont::GetGlobalScale();
+    int lw=0, lh=0; renderer->GetLogicalSize(lw, lh);
+    int spacing = (int)(60 * uiScale);
 
+    // Compute visible range with scrolling
     int optionCount = GetOptionCount();
+    int maxVisible = std::max(1, (lh - (int)(200*uiScale) - (int)(120*uiScale)) / spacing);
+    m_maxVisibleOptions = maxVisible;
+    m_optionsScrollOffset = std::min(m_optionsScrollOffset, std::max(0, optionCount - maxVisible));
+
+    int blockHeight = std::min(optionCount, maxVisible) * spacing;
+    int startY = (lh - blockHeight) / 2; // center vertically
+    int startX = (int)(std::max(20.0f, (lw - 600*uiScale) / 2)); // center-ish horizontally with margin
+
     for (int i = 0; i < optionCount; i++) {
-        int y = startY + i * spacing;
+        int visibleIndex = i - m_optionsScrollOffset;
+        if (visibleIndex < 0 || visibleIndex >= maxVisible) continue;
+        int y = startY + visibleIndex * spacing;
         bool isSelected = (i == m_selectedOption);
 
         Color textColor = isSelected && m_showSelection ?
             Color(255, 255, 100, 255) : Color(200, 200, 200, 255);
 
         std::string displayText = m_options[i];
-
-        // Add value display for options
         OptionType type = m_optionTypes[i];
-        switch (type) {
-            case OptionType::VOLUME_MUSIC:
-                displayText += GetVolumeDisplayText(m_musicVolume);
-                break;
-            case OptionType::VOLUME_SOUND:
-                displayText += GetVolumeDisplayText(m_soundVolume);
-                break;
-            default:
-                // No additional text for other options
-                break;
+
+        // Headers: style differently and skip value brackets
+        bool isHeader = (type == OptionType::HEADER_VIDEO || type == OptionType::HEADER_AUDIO || type == OptionType::HEADER_CONTROLS);
+        int textScale = isHeader ? 2 : 2;
+        Color headerColor(180, 220, 255, 255);
+
+        if (!isHeader) {
+            // Add value display for non-header options
+            switch (type) {
+                case OptionType::VOLUME_MUSIC:
+                    displayText += GetVolumeDisplayText(m_musicVolume);
+                    break;
+                case OptionType::VOLUME_SOUND:
+                    displayText += GetVolumeDisplayText(m_soundVolume);
+                    break;
+                case OptionType::RESOLUTION:
+                    if (!m_resolutions.empty()) {
+                        const auto& r = m_resolutions[std::clamp(m_resolutionIndex, 0, (int)m_resolutions.size()-1)];
+                        displayText += "  [" + std::to_string(r.w) + "x" + std::to_string(r.h) + "]";
+                        if (r.w == 800 && r.h == 600) { displayText += "  (Standard)"; }
+                    }
+                    break;
+                case OptionType::FULLSCREEN:
+                    displayText += m_fullscreen ? "  [On]" : "  [Off]";
+                    break;
+                case OptionType::VSYNC:
+                    displayText += m_vsync ? "  [On]" : "  [Off]";
+                    break;
+                case OptionType::FPS_LIMIT:
+                    if (!m_fpsOptions.empty()) {
+                        int fps = m_fpsOptions[std::clamp(m_fpsIndex, 0, (int)m_fpsOptions.size()-1)];
+                        displayText += fps > 0 ? ("  [" + std::to_string(fps) + "]") : "  [Unlimited]";
+                    }
+                    break;
+                default:
+                    break;
+            }
         }
 
-        BitmapFont::DrawText(renderer, displayText, 200, y, 2, textColor);
+        // Draw
+        if (isHeader) {
+            BitmapFont::DrawText(renderer, displayText, startX - 20, y, textScale, headerColor);
+        } else {
+            BitmapFont::DrawText(renderer, displayText, startX, y, textScale, textColor);
+        }
 
-        // Draw selection indicator
-        if (isSelected && m_showSelection) {
-            BitmapFont::DrawText(renderer, ">", 170, y, 2, Color(255, 255, 100, 255));
+        // Draw selection indicator only on interactive
+        if (!isHeader && isSelected && m_showSelection) {
+            BitmapFont::DrawText(renderer, ">", 170, y, textScale, Color(255, 255, 100, 255));
         }
     }
 }
@@ -366,26 +574,204 @@ void OptionsState::DrawOptions() {
 void OptionsState::DrawInstructions() {
     auto* renderer = GetRenderer();
 
-    int instructionY = 500;  // Start position for instructions
+    float uiScale = BitmapFont::GetGlobalScale();
+    int instructionY = (int)(500 * uiScale);  // Start position for instructions
+
+    // Row-specific tips
+    std::string tip;
+    if (m_selectedOption >= 0 && m_selectedOption < GetOptionCount()) {
+        switch (m_optionTypes[m_selectedOption]) {
+            case OptionType::RESOLUTION:
+                tip = "Left/Right: Change resolution  Enter: Apply"; break;
+            case OptionType::FULLSCREEN:
+                tip = "Enter: Toggle fullscreen"; break;
+            case OptionType::VSYNC:
+                tip = "Enter: Toggle VSync (recreates renderer)"; break;
+            case OptionType::FPS_LIMIT:
+                tip = "Left/Right: Change FPS cap  Enter: Apply"; break;
+            case OptionType::APPLY_CHANGES:
+                tip = "Enter: Apply pending video changes (starts confirm timer)"; break;
+            case OptionType::CANCEL_CHANGES:
+                tip = "Enter: Cancel pending or revert applied changes"; break;
+            case OptionType::CONFIRM_CHANGES:
+                tip = "Enter: Confirm changes and cancel auto-revert"; break;
+            case OptionType::STANDARDIZE:
+                tip = "Enter: Snap to 800x600, VSync On, 60 FPS (then Apply)"; break;
+            case OptionType::VOLUME_MUSIC:
+                tip = "Left/Right: Adjust music volume"; break;
+            case OptionType::VOLUME_SOUND:
+                tip = "Left/Right: Adjust SFX volume"; break;
+            case OptionType::KEYBINDINGS:
+                tip = "Enter: Open keybindings"; break;
+            default:
+                break;
+        }
+
+        // Show apply/cancel/confirm hint when pending or awaiting confirm
+        if (m_videoPendingChanges || m_videoAwaitingConfirm) {
+            std::string applyTip = m_videoAwaitingConfirm ?
+                ("Changes applied. Confirm within " + std::to_string((int)std::ceil(m_videoRevertTimer)) + "s or they will revert.") :
+                "Pending changes: Select Apply to commit or Cancel to discard.";
+            BitmapFont::DrawText(renderer, applyTip, (int)(30*uiScale), instructionY + (int)(100*uiScale), std::max(1, (int)uiScale), Color(255, 200, 120, 255));
+        }
+    }
+
+    if (!tip.empty()) {
+        BitmapFont::DrawText(renderer, tip, (int)(30*uiScale), instructionY + (int)(80*uiScale), std::max(1, (int)uiScale), Color(180, 180, 255, 255));
+    }
+
+    // Show apply/cancel hint when pending or awaiting confirm
+    if (m_videoPendingChanges || m_videoAwaitingConfirm) {
+        std::string applyTip = m_videoAwaitingConfirm ?
+            ("Changes applied. Confirm within " + std::to_string((int)std::ceil(m_videoRevertTimer)) + "s or they will revert.") :
+            "Pending changes: Select Apply to commit or Cancel to discard.";
+        BitmapFont::DrawText(renderer, applyTip, (int)(30*uiScale), instructionY + (int)(100*uiScale), std::max(1, (int)uiScale), Color(255, 200, 120, 255));
+    }
 
     if (m_inKeybindingMode) {
         if (m_waitingForKey) {
-            BitmapFont::DrawText(renderer, "PRESS A KEY TO BIND (ESC TO CANCEL)", 30, instructionY, 1, Color(255, 255, 100, 255));
+            BitmapFont::DrawText(renderer, "PRESS A KEY TO BIND (ESC TO CANCEL)", (int)(30*uiScale), instructionY, std::max(1, (int)uiScale), Color(255, 255, 100, 255));
         } else {
-            BitmapFont::DrawText(renderer, "UP/DOWN: Navigate  ENTER: Rebind Primary  RIGHT: Rebind Alt", 30, instructionY, 1, Color(150, 150, 150, 255));
-            BitmapFont::DrawText(renderer, "B/ESC: Back to Options", 30, instructionY + 20, 1, Color(150, 150, 150, 255));
+            BitmapFont::DrawText(renderer, "UP/DOWN: Navigate  ENTER: Rebind Primary  RIGHT: Rebind Alt", (int)(30*uiScale), instructionY, std::max(1, (int)uiScale), Color(150, 150, 150, 255));
+            BitmapFont::DrawText(renderer, "B/ESC: Back to Options", (int)(30*uiScale), instructionY + (int)(20*uiScale), std::max(1, (int)uiScale), Color(150, 150, 150, 255));
 
             // Show scroll hint if needed
             if (m_configurableActions.size() > static_cast<size_t>(m_maxVisibleKeybindings)) {
-                BitmapFont::DrawText(renderer, "Use UP/DOWN to scroll through all keybindings", 30, instructionY + 40, 1, Color(100, 100, 100, 255));
+                BitmapFont::DrawText(renderer, "Use UP/DOWN to scroll through all keybindings", (int)(30*uiScale), instructionY + (int)(40*uiScale), std::max(1, (int)uiScale), Color(100, 100, 100, 255));
             }
         }
     } else {
         // Main options menu instructions
-        BitmapFont::DrawText(renderer, "UP/DOWN: Navigate between options", 30, instructionY, 1, Color(150, 150, 150, 255));
-        BitmapFont::DrawText(renderer, "LEFT/RIGHT: Adjust volume settings", 30, instructionY + 20, 1, Color(150, 150, 150, 255));
-        BitmapFont::DrawText(renderer, "ENTER: Select option", 30, instructionY + 40, 1, Color(150, 150, 150, 255));
-        BitmapFont::DrawText(renderer, "B/ESC: Back to Main Menu", 30, instructionY + 60, 1, Color(150, 150, 150, 255));
+        BitmapFont::DrawText(renderer, "UP/DOWN: Navigate between options", (int)(30*uiScale), instructionY, std::max(1, (int)uiScale), Color(150, 150, 150, 255));
+        BitmapFont::DrawText(renderer, "LEFT/RIGHT: Adjust settings", (int)(30*uiScale), instructionY + (int)(20*uiScale), std::max(1, (int)uiScale), Color(150, 150, 150, 255));
+        BitmapFont::DrawText(renderer, "ENTER: Apply (Resolution/Fullscreen/VSync/FPS)", (int)(30*uiScale), instructionY + (int)(40*uiScale), std::max(1, (int)uiScale), Color(150, 150, 150, 255));
+        BitmapFont::DrawText(renderer, "B/ESC: Back to Main Menu", (int)(30*uiScale), instructionY + (int)(60*uiScale), std::max(1, (int)uiScale), Color(150, 150, 150, 255));
+    }
+}
+
+void OptionsState::InitializeVideoOptions() {
+    // Populate common resolutions
+    m_resolutions = {
+        {800, 600}, {1024, 768}, {1280, 720}, {1366, 768}, {1600, 900}, {1920, 1080}, {2560, 1440}
+    };
+
+    // Load saved (or current) settings from gameplay.ini
+    ConfigManager cfg;
+
+    if (cfg.LoadFromFile("assets/config/gameplay.ini")) {
+        int w = cfg.Get("visual", "screen_width", 800).AsInt();
+        int h = cfg.Get("visual", "screen_height", 600).AsInt();
+
+        bool fs = cfg.Get("visual", "fullscreen", false).AsBool();
+        m_fullscreen = fs;
+        // Find matching resolution in list, else append
+        bool found = false;
+        for (size_t i = 0; i < m_resolutions.size(); ++i) {
+            if (m_resolutions[i].w == w && m_resolutions[i].h == h) { m_resolutionIndex = static_cast<int>(i); found = true; break; }
+        }
+        if (!found) { m_resolutions.push_back({w, h}); m_resolutionIndex = static_cast<int>(m_resolutions.size() - 1); }
+    }
+    // Load VSync and FPS from config
+    {
+    m_videoAwaitingConfirm = false;
+    m_videoRevertTimer = 0.0f;
+
+        ConfigManager cfg2;
+        if (cfg2.LoadFromFile("assets/config/gameplay.ini")) {
+            m_vsync = cfg2.Get("visual", "vsync", true).AsBool();
+            int fps = cfg2.Get("visual", "fps_limit", 60).AsInt(); // 0 = Unlimited
+            m_fpsIndex = 0;
+            for (size_t i = 0; i < m_fpsOptions.size(); ++i) {
+                if (m_fpsOptions[i] == fps) { m_fpsIndex = static_cast<int>(i); break; }
+            }
+        }
+    }
+}
+void OptionsState::ApplyVideoChanges() {
+    // Take snapshot before applying to allow revert
+    LoadVisualSnapshot(m_prevFullscreen, m_prevVsync, m_prevWidth, m_prevHeight, m_prevFps);
+    m_hasPrevSnapshot = true;
+
+    SaveVideoSettings();
+    if (auto* eng = GetEngine()) {
+        eng->RecreateRendererFromConfig();
+        int fps = m_fpsOptions[std::clamp(m_fpsIndex, 0, (int)m_fpsOptions.size()-1)];
+        eng->SetTargetFPS(fps <= 0 ? 0 : fps);
+    }
+    m_videoPendingChanges = false;
+    m_videoAwaitingConfirm = true;
+    m_videoRevertTimer = 10.0f; // 10-second confirm window
+}
+
+void OptionsState::RevertVideoChanges() {
+    if (m_hasPrevSnapshot) {
+        // Restore previous settings and apply
+        // Update in-memory values
+        // Restore resolution index to match previous width/height
+        int idx = 0;
+        for (size_t i = 0; i < m_resolutions.size(); ++i) {
+            if (m_resolutions[i].w == m_prevWidth && m_resolutions[i].h == m_prevHeight) { idx = (int)i; break; }
+        }
+        m_resolutionIndex = idx;
+        m_fullscreen = m_prevFullscreen;
+        m_vsync = m_prevVsync;
+        // map fps to index
+        for (size_t i = 0; i < m_fpsOptions.size(); ++i) {
+            if (m_fpsOptions[i] == m_prevFps) { m_fpsIndex = (int)i; break; }
+        }
+        SaveVideoSettings();
+        if (auto* eng = GetEngine()) {
+            eng->RecreateRendererFromConfig();
+            eng->SetTargetFPS(m_prevFps <= 0 ? 0 : m_prevFps);
+        }
+    } else {
+        // Fallback: reload from config
+        InitializeVideoOptions();
+    }
+    m_videoPendingChanges = false;
+    m_videoAwaitingConfirm = false;
+    m_videoRevertTimer = 0.0f;
+}
+
+void OptionsState::StandardizeVideoSettings() {
+    // Set to baseline values
+    // 800x600, fullscreen off, vsync on, fps 60
+    int idx = 0;
+    for (size_t i = 0; i < m_resolutions.size(); ++i) {
+        if (m_resolutions[i].w == 800 && m_resolutions[i].h == 600) { idx = (int)i; break; }
+    }
+    // Take snapshot of currently applied settings for revert window
+    LoadVisualSnapshot(m_prevFullscreen, m_prevVsync, m_prevWidth, m_prevHeight, m_prevFps);
+    m_hasPrevSnapshot = true;
+
+    m_resolutionIndex = idx;
+    m_fullscreen = false;
+    m_vsync = true;
+    // find 60 in presets
+    for (size_t i = 0; i < m_fpsOptions.size(); ++i) {
+        if (m_fpsOptions[i] == 60) { m_fpsIndex = (int)i; break; }
+    }
+    m_videoPendingChanges = true;
+}
+
+
+
+void OptionsState::SaveVideoSettings() {
+    // Persist to gameplay.ini
+    ConfigManager cfg;
+    cfg.LoadFromFile("assets/config/gameplay.ini");
+    const auto& res = m_resolutions[std::clamp(m_resolutionIndex, 0, (int)m_resolutions.size()-1)];
+    cfg.Set("visual", "screen_width", res.w);
+    cfg.Set("visual", "screen_height", res.h);
+    cfg.Set("visual", "fullscreen", m_fullscreen);
+    cfg.Set("visual", "vsync", m_vsync);
+    cfg.Set("visual", "fps_limit", m_fpsOptions[std::clamp(m_fpsIndex, 0, (int)m_fpsOptions.size()-1)]);
+    cfg.SaveToFile("assets/config/gameplay.ini");
+
+    // Apply immediately to window
+    if (auto* win = GetEngine()->GetWindow()) {
+        win->SetFullscreen(m_fullscreen);
+        if (!m_fullscreen) win->SetSize(res.w, res.h);
     }
 }
 
@@ -393,15 +779,41 @@ void OptionsState::InitializeOptions() {
     m_options.clear();
     m_optionTypes.clear();
 
+    // Grouped sections with headers for clarity
+    InitializeVideoOptions();
+    m_options.push_back("Video");
+    m_optionTypes.push_back(OptionType::HEADER_VIDEO);
+    m_options.push_back("Resolution");
+    m_optionTypes.push_back(OptionType::RESOLUTION);
+    m_options.push_back("Fullscreen");
+    m_optionTypes.push_back(OptionType::FULLSCREEN);
+    m_options.push_back("VSync");
+    m_optionTypes.push_back(OptionType::VSYNC);
+    m_options.push_back("FPS Limit");
+    m_optionTypes.push_back(OptionType::FPS_LIMIT);
+    // Apply/Cancel/Confirm and Standardize controls
+    m_options.push_back("Apply");
+    m_optionTypes.push_back(OptionType::APPLY_CHANGES);
+    m_options.push_back("Cancel");
+    m_optionTypes.push_back(OptionType::CANCEL_CHANGES);
+    m_options.push_back("Confirm");
+    m_optionTypes.push_back(OptionType::CONFIRM_CHANGES);
+    m_options.push_back("Standardize (800x600, VSync On, 60 FPS)");
+    m_optionTypes.push_back(OptionType::STANDARDIZE);
+
+    m_options.push_back("Audio");
+    m_optionTypes.push_back(OptionType::HEADER_AUDIO);
     m_options.push_back("Music Volume");
     m_optionTypes.push_back(OptionType::VOLUME_MUSIC);
-
     m_options.push_back("Sound Volume");
     m_optionTypes.push_back(OptionType::VOLUME_SOUND);
 
+    m_options.push_back("Controls");
+    m_optionTypes.push_back(OptionType::HEADER_CONTROLS);
     m_options.push_back("Keybindings");
     m_optionTypes.push_back(OptionType::KEYBINDINGS);
 
+    // Back
     m_options.push_back("Back to Menu");
     m_optionTypes.push_back(OptionType::BACK_TO_MENU);
 

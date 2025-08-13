@@ -11,11 +11,21 @@
 #include "Engine/Renderer.h"  // For Color struct
 #include <string>
 #include <memory>
+#include <vector>
+
+// Level data structures
+struct LevelEnemyPlacement {
+    std::string type; // character template name from characters.ini (e.g., goblin, wolf)
+    float x = 0.0f;
+    float y = 0.0f;
+    float vx = 0.0f; // optional override; if 0, use config base
+    float vy = 0.0f;
+};
 
 /**
  * @class GameConfig
  * @brief Wrapper around ConfigManager providing typed access to game settings
- * 
+ *
  * This class provides a convenient interface for accessing game configuration
  * values with proper types and sensible defaults. It loads multiple config files
  * and provides easy access methods for common game parameters.
@@ -89,6 +99,21 @@ public:
     float GetDebugOutputInterval() const;
     int GetDebugFrameInterval() const;
 
+    // Win/progression settings (per-level)
+    bool GetWinOnTimer() const;                 // [win] win_on_timer=true/false
+    float GetWinSurviveTimeSeconds() const;     // [win] survive_time_seconds=...
+    std::string GetNextLevelName() const;       // [win] next_level=level2
+    bool GetWinOnBossDefeat() const;            // [win] win_on_boss_defeat=true/false
+    bool GetWinOnDefeatAllEnemies() const;      // [win] win_on_defeat_all_enemies=true/false
+        // Level end distance (win condition alternative)
+        float GetLevelEndDistance() const;          // [win] end_distance=... (pixels)
+
+            // If true, both end_distance and boss defeat are required for victory when boss victory is enabled
+            bool GetRequireBossAndEnd() const;       // [win] require_boss_and_end=true/false
+
+            bool GetWinDebugOverlay() const;         // [win] debug_overlay=true/false
+
+
     // Enemy settings
     int GetEnemyCount() const;
     float GetEnemySpawnStartX() const;
@@ -127,6 +152,9 @@ public:
     int GetGroundDetailHeight() const;
     int GetGroundDetailSpacing() const;
     int GetGroundDetailOffset() const;
+
+    // Level explicit placements
+    const std::vector<LevelEnemyPlacement>& GetLevelEnemyPlacements() const { return m_levelEnemyPlacements; }
 
     // Combat settings
     float GetBaseAttackDamage() const;
@@ -239,6 +267,9 @@ private:
     std::unique_ptr<ConfigManager> m_characterConfig;
     std::unique_ptr<ConfigManager> m_levelConfig;  // Level-specific overrides
 
+    // Parsed explicit placements for current level
+    std::vector<LevelEnemyPlacement> m_levelEnemyPlacements;
+
     // Hot-reloading support
     mutable time_t m_lastGameplayModTime;
     mutable time_t m_lastCharacterModTime;
@@ -258,6 +289,12 @@ private:
      * @brief Get file modification time
      */
     time_t GetFileModificationTime(const std::string& filepath) const;
+
+    /**
+     * @brief Parse level-specific enemy placements from the level config if present
+     * Expected sections: [enemy.1], [enemy.2], ... with keys: type, x, y, vx, vy
+     */
+    void ParseLevelEnemyPlacements();
 
     /**
      * @brief Get config value with level override support

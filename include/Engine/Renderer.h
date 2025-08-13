@@ -203,8 +203,14 @@ public:
 
     // Getters
     SDL_Renderer* GetSDLRenderer() const { return m_renderer; }
+    void GetLogicalSize(int& w, int& h) const;
+    void UpdateLogicalToOutput();
+
+    // Utility: draw black bars for letterboxing/pillarboxing
+    void DrawLetterboxBars(int logicalW, int logicalH);
 
 private:
     SDL_Renderer* m_renderer;
+
     std::unordered_map<std::string, std::shared_ptr<Texture>> m_textureCache;
 };

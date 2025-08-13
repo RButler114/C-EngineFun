@@ -57,6 +57,10 @@ public:
      */
     static void DrawText(Renderer* renderer, const std::string& text, int x, int y, int scale, const Color& color);
 
+    // Global UI scale multiplier (applies to all DrawText calls)
+    static void SetGlobalScale(float scale);
+    static float GetGlobalScale();
+
 private:
     /**
      * @brief Get the 5x7 pixel font patterns for all supported characters

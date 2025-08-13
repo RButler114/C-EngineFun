@@ -8,12 +8,12 @@
 class PauseState : public GameState {
 public:
     enum class Mode {
-        ROOT_MENU,      // Resume / Party / Items / Options / Save / Quit to Menu
+        ROOT_MENU,      // Resume / Party / Items / Options / Quit to Menu
         PARTY_VIEW,     // List of current party members
         PARTY_DETAILS,  // Dedicated details view for the selected member
-        ITEMS_VIEW,     // Placeholder grid/list (non-functional for now)
+        PARTY_EQUIP,    // Equip UI for currently selected member
+        ITEMS_VIEW,     // Items inventory
         OPTIONS_VIEW,   // Delegates to OptionsState by pushing it
-        SAVE_CONFIRM    // Simple confirm/cancel (placeholder)
     };
 
     PauseState();
@@ -46,8 +46,16 @@ private:
     void DrawPartyPanel();
     void DrawPartyDetailsPanel();
 
+    // Equip UI
+    void DrawEquipPanel();
+    void HandleEquipInput();
+
+    // Equip panel state
+    int m_equipSlotIndex = 0; // 0=weapon,1=armor,2=accessory
+    int m_equipItemIndex = 0; // index within filtered inventory list
+
+
     void DrawItemsPanel();
-    void DrawSavePanel();
 
     // Navigation helpers
     void NavigateUp();
@@ -56,6 +64,14 @@ private:
     void NavigateRight();
     void Select();
     void Back();
+
+    // Items interaction
+    void HandleItemsInput();
+
+    // Items state (no persistence across openings by design)
+    int m_itemsCursor = 0;             // index into filtered consumables
+    bool m_itemsSelectingTarget = false;
+    int m_itemsPartyCursor = 0;        // target party member index when selecting target
 
     // Helpers
     int GetPartySize() const; // Hide future capacity; only returns currently active members

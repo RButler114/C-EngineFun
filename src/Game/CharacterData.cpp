@@ -28,6 +28,8 @@ void CharacterDataRegistry::LoadFromConfig(const std::string& configPath) {
         data.agility = cfg.Get(sectionName, "agility", 10.0f).AsFloat();
         data.intelligence = cfg.Get(sectionName, "intelligence", 10.0f).AsFloat();
         data.vitality = cfg.Get(sectionName, "vitality", 10.0f).AsFloat();
+        data.maxMana = cfg.Get(sectionName, "max_mana", 30.0f).AsFloat();
+
         m_statsByTemplate[sectionName] = data;
     }
 }

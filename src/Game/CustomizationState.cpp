@@ -14,8 +14,41 @@
 #include "Engine/ConfigSystem.h"
 #include "Engine/AudioManager.h"
 
+#include "Game/PlayingState.h"
+#include "Engine/SpriteRenderer.h"
+
+#include "Game/CharacterData.h"
+#include "Game/InventoryManager.h"
+
 #include <SDL2/SDL.h>
+namespace {
+    bool s_limitsLoaded = false;
+    int s_minAttr = 1;
+    int s_maxAttr = 99;
+    int s_totalPoints = 10;
+    void EnsureLimitsLoaded(CustomizationManager* mgr) {
+        if (s_limitsLoaded) return;
+        ConfigManager cfg;
+        if (cfg.LoadFromFile("assets/config/customization.ini") && cfg.HasSection("customization_limits")) {
+            s_totalPoints = cfg.Get("customization_limits", "total_attribute_points", s_totalPoints).AsInt();
+            s_minAttr = cfg.Get("customization_limits", "min_attribute_value", s_minAttr).AsInt();
+            s_maxAttr = cfg.Get("customization_limits", "max_attribute_value", s_maxAttr).AsInt();
+        }
+        s_limitsLoaded = true;
+        if (mgr) {
+            auto& cz = mgr->GetPlayerCustomization();
+            // If default 10, derive remaining from total - current
+            if (cz.availablePoints == 10) {
+                int baseSum = static_cast<int>(cz.strength + cz.agility + cz.intelligence + cz.vitality);
+                cz.availablePoints = std::max(0, s_totalPoints - baseSum);
+            }
+        }
+    }
+}
+
 #include <iostream>
+#include <sstream>
+
 #include <algorithm>
 
 // Color constants are now defined in the header as static const int values
@@ -23,12 +56,11 @@
 CustomizationState::CustomizationState()
     : GameState(GameStateType::CUSTOMIZATION, "Customization") {
 
-    // Initialize categories in order
+    // Initialize categories in order (equipment handled later in Pause -> Equip)
     m_categories = {
         CustomizationCategory::BASIC_INFO,
         CustomizationCategory::APPEARANCE,
-        CustomizationCategory::ATTRIBUTES,
-        CustomizationCategory::EQUIPMENT
+        CustomizationCategory::ATTRIBUTES
     };
 }
 
@@ -63,6 +95,18 @@ void CustomizationState::OnEnter() {
         am->LoadSound("menu_nav", "assets/music/clicking-interface-select-201946.mp3", SoundType::SOUND_EFFECT);
         am->LoadSound("menu_select", "assets/music/select-001-337218.mp3", SoundType::SOUND_EFFECT);
         am->LoadSound("menu_back", "assets/music/select-003-337609.mp3", SoundType::SOUND_EFFECT);
+    // Initialize GameConfig for preview animation and sprite sizing
+    m_gameConfig = std::make_unique<GameConfig>();
+    m_gameConfig->LoadConfigs();
+    // Clamp base attributes to configured min/max right away
+    EnsureLimitsLoaded(m_customizationManager.get());
+    auto& czClamp = m_customizationManager->GetPlayerCustomization();
+    auto clampInt = [](float v, int lo, int hi){ return static_cast<float>(std::max(lo, std::min(hi, static_cast<int>(v)))); };
+    czClamp.strength = clampInt(czClamp.strength, s_minAttr, s_maxAttr);
+    czClamp.agility = clampInt(czClamp.agility, s_minAttr, s_maxAttr);
+    czClamp.intelligence = clampInt(czClamp.intelligence, s_minAttr, s_maxAttr);
+    czClamp.vitality = clampInt(czClamp.vitality, s_minAttr, s_maxAttr);
+
     }
 }
 
@@ -100,8 +144,9 @@ void CustomizationState::Render() {
     // Clear with background color
     renderer->Clear(Color(COLOR_BACKGROUND_R, COLOR_BACKGROUND_G, COLOR_BACKGROUND_B, 255));
 
-    // Render title
-    BitmapFont::DrawText(renderer, "CHARACTER CUSTOMIZATION", MARGIN, 20, 3,
+    // Render title (UI scale aware)
+    float uiScale = BitmapFont::GetGlobalScale();
+    BitmapFont::DrawText(renderer, "CHARACTER CUSTOMIZATION", (int)(MARGIN*uiScale), (int)(20*uiScale), std::max(1, (int)(3*uiScale)),
                         Color(COLOR_ACCENT_R, COLOR_ACCENT_G, COLOR_ACCENT_B, 255));
 
     // Render based on current mode
@@ -167,6 +212,9 @@ void CustomizationState::HandleInput() {
             break;
         case UIMode::NAME_INPUT:
             HandleNameInputKeys();
+    // Ensure limits are loaded early
+    EnsureLimitsLoaded(m_customizationManager.get());
+
             break;
         case UIMode::ATTRIBUTE_ADJUSTMENT:
             HandleAttributeInput();
@@ -248,20 +296,69 @@ void CustomizationState::RenderOptionSelection() {
         y += LINE_HEIGHT;
 
         // Show options
-        for (int i = 0; i < static_cast<int>(group->options.size()); ++i) {
-            const auto& option = group->options[i];
-
-            if (i == m_selectedOptionIndex) {
-                BitmapFont::DrawText(renderer, "> " + option.displayName, MARGIN + 20, y, 1,
-                                   Color(COLOR_SELECTED_R, COLOR_SELECTED_G, COLOR_SELECTED_B, 255));
-            } else if (i == group->selectedIndex) {
-                BitmapFont::DrawText(renderer, "* " + option.displayName, MARGIN + 20, y, 1,
-                                   Color(COLOR_ACCENT_R, COLOR_ACCENT_G, COLOR_ACCENT_B, 255));
-            } else {
-                BitmapFont::DrawText(renderer, "  " + option.displayName, MARGIN + 20, y, 1,
-                                   Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
+        if (group->id == "character_class" && !group->options.empty()) {
+            // Side-scroll carousel: show 3 at a time, centered on selection, wrap-around
+            const int visible = 3;
+            int n = static_cast<int>(group->options.size());
+            int center = m_selectedOptionIndex % n; if (center < 0) center += n;
+            int startOffset = -visible/2; // -1, 0, +1 around center
+            int baseX = MARGIN + 60;
+            int baseY = y;
+            int stepX = 200; // horizontal spacing for 3 items
+            int tileW = 160, tileH = 36;
+            // Arrows as indicators
+            BitmapFont::DrawText(renderer, "<", baseX - 30, baseY + 8, 2, Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 200));
+            BitmapFont::DrawText(renderer, ">", baseX + (visible - 1) * stepX + 60, baseY + 8, 2, Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 200));
+            for (int k = 0; k < visible; ++k) {
+                int rel = startOffset + k;
+                int idx = (center + rel) % n; if (idx < 0) idx += n;
+                const auto& opt = group->options[idx];
+                bool selected = (idx == center);
+                int x = baseX + k * stepX;
+                // Background tiles: faint for non-selected, stronger for selected
+                Rectangle tileRect(x - 10, baseY - 6, tileW, tileH);
+                Color box = selected ? Color(60, 60, 100, 200) : Color(40, 40, 60, 120);
+                GetRenderer()->DrawRectangle(tileRect, box, true);
+                // Label
+                std::string label = opt.displayName;
+                Color col = selected ? Color(COLOR_SELECTED_R, COLOR_SELECTED_G, COLOR_SELECTED_B, 255)
+                                     : Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255);
+                BitmapFont::DrawText(renderer, label, x, baseY, 1, col);
             }
-            y += LINE_HEIGHT;
+            // Description of currently centered job (from customization.ini)
+            const auto& sel = group->options[center];
+            int textY = baseY + LINE_HEIGHT * 2;
+            if (!sel.description.empty()) {
+                // Simple word-wrap for description
+                int maxChars = 64; // rough wrap width per line
+                std::istringstream iss(sel.description);
+                std::string word, line;
+                auto flushLine = [&](){ if (!line.empty()) { BitmapFont::DrawText(renderer, line, MARGIN + 20, textY, 1, Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255)); textY += LINE_HEIGHT; line.clear(); } };
+                while (iss >> word) {
+                    std::string next = line.empty()? word : (line + " " + word);
+                    if ((int)next.size() > maxChars) { flushLine(); line = word; }
+                    else { line = next; }
+                }
+                flushLine();
+            }
+            BitmapFont::DrawText(renderer, "Left/Right: Change Job   Up/Down: Switch Group   Enter: Select", MARGIN + 20, textY, 1,
+                                 Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
+            y = textY + LINE_HEIGHT;
+        } else {
+            for (int i = 0; i < static_cast<int>(group->options.size()); ++i) {
+                const auto& option = group->options[i];
+                if (i == m_selectedOptionIndex) {
+                    BitmapFont::DrawText(renderer, "> " + option.displayName, MARGIN + 20, y, 1,
+                                       Color(COLOR_SELECTED_R, COLOR_SELECTED_G, COLOR_SELECTED_B, 255));
+                } else if (i == group->selectedIndex) {
+                    BitmapFont::DrawText(renderer, "* " + option.displayName, MARGIN + 20, y, 1,
+                                       Color(COLOR_ACCENT_R, COLOR_ACCENT_G, COLOR_ACCENT_B, 255));
+                } else {
+                    BitmapFont::DrawText(renderer, "  " + option.displayName, MARGIN + 20, y, 1,
+                                       Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
+                }
+                y += LINE_HEIGHT;
+            }
         }
     }
 }
@@ -286,32 +383,59 @@ void CustomizationState::RenderNameInput() {
                         Color(COLOR_SELECTED_R, COLOR_SELECTED_G, COLOR_SELECTED_B, 255));
 }
 
+
+
 void CustomizationState::RenderAttributeAdjustment() {
     auto* renderer = GetRenderer();
     if (!renderer) return;
 
     int y = TITLE_HEIGHT + MARGIN;
 
-    BitmapFont::DrawText(renderer, "Attribute Distribution:", MARGIN, y, 2,
+    BitmapFont::DrawText(renderer, "Attribute Distribution (Left/Right to adjust, Enter to confirm):", MARGIN, y, 2,
                         Color(COLOR_ACCENT_R, COLOR_ACCENT_G, COLOR_ACCENT_B, 255));
     y += LINE_HEIGHT * 2;
 
-    const auto& customization = m_customizationManager->GetPlayerCustomization();
+    const auto& cz = m_customizationManager->GetPlayerCustomization();
 
-    BitmapFont::DrawText(renderer, "Strength: " + std::to_string(static_cast<int>(customization.strength)), MARGIN, y, 1,
-                        Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
-    y += LINE_HEIGHT;
-    BitmapFont::DrawText(renderer, "Agility: " + std::to_string(static_cast<int>(customization.agility)), MARGIN, y, 1,
-                        Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
-    y += LINE_HEIGHT;
-    BitmapFont::DrawText(renderer, "Intelligence: " + std::to_string(static_cast<int>(customization.intelligence)), MARGIN, y, 1,
-                        Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
-    y += LINE_HEIGHT;
-    BitmapFont::DrawText(renderer, "Vitality: " + std::to_string(static_cast<int>(customization.vitality)), MARGIN, y, 1,
-                        Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
-    y += LINE_HEIGHT * 2;
+    int sel = m_selectedOptionIndex; // reuse selection index for which attribute is focused: 0..3
 
-    BitmapFont::DrawText(renderer, "Available Points: " + std::to_string(customization.availablePoints), MARGIN, y, 1,
+    auto drawAttr = [&](const char* label, int value, bool selected){
+        std::string prefix = selected?"> ":"  ";
+        BitmapFont::DrawText(renderer, prefix + std::string(label) + ": " + std::to_string(value), MARGIN, y, 1,
+                             selected?Color(COLOR_SELECTED_R, COLOR_SELECTED_G, COLOR_SELECTED_B, 255):Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
+        y += LINE_HEIGHT;
+    };
+    // Read limits from config (once)
+    static bool s_limitsLoaded = false;
+    static int s_minAttr = 1, s_maxAttr = 99;
+    static int s_totalPoints = 10;
+    if (!s_limitsLoaded) {
+        ConfigManager cfg;
+        if (cfg.LoadFromFile("assets/config/customization.ini") && cfg.HasSection("customization_limits")) {
+            s_totalPoints = cfg.Get("customization_limits", "total_attribute_points", s_totalPoints).AsInt();
+            s_minAttr = cfg.Get("customization_limits", "min_attribute_value", s_minAttr).AsInt();
+            s_maxAttr = cfg.Get("customization_limits", "max_attribute_value", s_maxAttr).AsInt();
+        }
+        s_limitsLoaded = true;
+        // Set available points if still at default
+        auto& czInit = m_customizationManager->GetPlayerCustomization();
+        if (czInit.availablePoints == 10) {
+            // Derive remaining points from total - current base sum
+
+
+            int baseSum = static_cast<int>(czInit.strength + czInit.agility + czInit.intelligence + czInit.vitality);
+            czInit.availablePoints = std::max(0, s_totalPoints - baseSum);
+        }
+    }
+
+
+    drawAttr("Strength", static_cast<int>(cz.strength), sel==0);
+    drawAttr("Agility", static_cast<int>(cz.agility), sel==1);
+    drawAttr("Intelligence", static_cast<int>(cz.intelligence), sel==2);
+    drawAttr("Vitality", static_cast<int>(cz.vitality), sel==3);
+
+    y += LINE_HEIGHT;
+    BitmapFont::DrawText(renderer, "Available Points: " + std::to_string(cz.availablePoints), MARGIN, y, 1,
                         Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
 }
 
@@ -320,6 +444,8 @@ void CustomizationState::RenderConfirmation() {
     if (!renderer) return;
 
     int y = TITLE_HEIGHT + MARGIN;
+
+
 
     BitmapFont::DrawText(renderer, "Confirm Character:", MARGIN, y, 2,
                         Color(COLOR_ACCENT_R, COLOR_ACCENT_G, COLOR_ACCENT_B, 255));
@@ -350,6 +476,22 @@ void CustomizationState::RenderCharacterPreview() {
     int previewY = TITLE_HEIGHT + MARGIN;
     int previewWidth = 150;
     int previewHeight = 200;
+    // Animated sprite preview using SpriteRenderer and GameConfig
+    const auto& czLocal = m_customizationManager->GetPlayerCustomization();
+    std::string spritePath = czLocal.spritePath.empty() ? std::string("assets/sprites/little_adventurer.png") : czLocal.spritePath;
+    if (!m_gameConfig) { m_gameConfig = std::make_unique<GameConfig>(); m_gameConfig->LoadConfigs(); }
+    int spriteW = m_gameConfig->GetAnimationSpriteWidth();
+    int spriteH = m_gameConfig->GetAnimationSpriteHeight();
+    int totalFrames = m_gameConfig->GetAnimationTotalFrames();
+    float spriteScale = m_gameConfig->GetAnimationSpriteScale();
+    static float s_animT = 0.0f; s_animT += m_gameConfig->GetApproximateFrameTime();
+    int frameIndex = totalFrames > 0 ? static_cast<int>(std::fmod(s_animT * 5.0f, static_cast<float>(totalFrames))) : 0;
+    SpriteFrame frame = SpriteRenderer::CreateFrame(frameIndex, spriteW, spriteH, totalFrames);
+    SpriteRenderer::RenderSprite(renderer, spritePath,
+                                 previewX + (previewWidth - static_cast<int>(spriteW * spriteScale)) / 2,
+                                 previewY + (previewHeight - static_cast<int>(spriteH * spriteScale)) / 2,
+                                 frame, false, spriteScale);
+
 
     // Draw preview background
     renderer->DrawRectangle(Rectangle(previewX, previewY, previewWidth, previewHeight),
@@ -358,6 +500,19 @@ void CustomizationState::RenderCharacterPreview() {
     // Draw simple character representation
     BitmapFont::DrawText(renderer, "Preview", previewX + 10, previewY + 10, 1,
                         Color(COLOR_ACCENT_R, COLOR_ACCENT_G, COLOR_ACCENT_B, 255));
+
+    // Show name/job and derived HP/MP preview
+    const auto& cz = m_customizationManager->GetPlayerCustomization();
+    std::string job = cz.characterClass;
+    CharacterDataRegistry::Get().EnsureLoaded("assets/config/characters.ini");
+    CharacterStatsData base = CharacterDataRegistry::Get().GetStats(job.empty()?"player":job);
+    int infoY = previewY + previewHeight + 8;
+    BitmapFont::DrawText(renderer, "Name: " + cz.playerName, previewX, infoY, 1, Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
+    infoY += LINE_HEIGHT;
+    BitmapFont::DrawText(renderer, "Job: " + job, previewX, infoY, 1, Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
+    infoY += LINE_HEIGHT;
+    BitmapFont::DrawText(renderer, "HP: " + std::to_string((int)base.maxHealth) + "  MP: " + std::to_string((int)base.maxMana), previewX, infoY, 1,
+                         Color(COLOR_TEXT_R, COLOR_TEXT_G, COLOR_TEXT_B, 255));
 
     // TODO: Render actual character sprite based on customization
     renderer->DrawRectangle(Rectangle(previewX + 60, previewY + 80, 30, 60),
@@ -395,13 +550,12 @@ void CustomizationState::HandleCategoryInput() {
         if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
     } else if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
         SelectCategory(m_selectedCategoryIndex);
-        // Special handling for name input
-        if (m_categories[m_selectedCategoryIndex] == CustomizationCategory::BASIC_INFO) {
-            m_currentMode = UIMode::NAME_INPUT;
-            m_nameInputActive = true;
-        } else {
-            m_currentMode = UIMode::OPTION_SELECTION;
-        }
+        m_currentMode = UIMode::OPTION_SELECTION;
+        if (GetEngine()->GetAudioManager()) { GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.9f); }
+    } else if (input->IsKeyJustPressed(SDL_SCANCODE_N) && m_categories[m_selectedCategoryIndex] == CustomizationCategory::BASIC_INFO) {
+        // Quick access to name input from Basic Info
+        m_currentMode = UIMode::NAME_INPUT;
+        m_nameInputActive = true;
         if (GetEngine()->GetAudioManager()) { GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.9f); }
     } else if (input->IsKeyJustPressed(SDL_SCANCODE_C)) {
         // Quick confirm - go to confirmation screen
@@ -423,28 +577,54 @@ void CustomizationState::HandleOptionInput() {
     bool leftNow = input->IsKeyPressed(SDL_SCANCODE_LEFT);
     bool rightNow = input->IsKeyPressed(SDL_SCANCODE_RIGHT);
 
-    if (upNow && !upWas) {
-        if (m_selectedGroupIndex < static_cast<int>(m_currentCategoryGroups.size())) {
-            m_selectedOptionIndex = std::max(0, m_selectedOptionIndex - 1);
+    auto* group = m_currentCategoryGroups[m_selectedGroupIndex];
+
+    if (group && group->id == "character_class") {
+        // Carousel navigation: Left/Right cycles options; Up/Down switches group
+        if (leftNow && !leftWas) {
+            int n = static_cast<int>(group->options.size());
+            m_selectedOptionIndex = (m_selectedOptionIndex - 1 + n) % n;
             if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
-        }
-    } else if (downNow && !downWas) {
-        if (m_selectedGroupIndex < static_cast<int>(m_currentCategoryGroups.size())) {
-            auto* group = m_currentCategoryGroups[m_selectedGroupIndex];
-            m_selectedOptionIndex = std::min(static_cast<int>(group->options.size()) - 1, m_selectedOptionIndex + 1);
+        } else if (rightNow && !rightWas) {
+            int n = static_cast<int>(group->options.size());
+            m_selectedOptionIndex = (m_selectedOptionIndex + 1) % n;
             if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+        } else if (upNow && !upWas) {
+            m_selectedGroupIndex = std::max(0, m_selectedGroupIndex - 1);
+            m_selectedOptionIndex = 0;
+            if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+        } else if (downNow && !downWas) {
+            m_selectedGroupIndex = std::min(static_cast<int>(m_currentCategoryGroups.size()) - 1, m_selectedGroupIndex + 1);
+            m_selectedOptionIndex = 0;
+            if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+        } else if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
+            ApplyCurrentSelection();
+            if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.9f);
         }
-    } else if (leftNow && !leftWas) {
-        m_selectedGroupIndex = std::max(0, m_selectedGroupIndex - 1);
-        m_selectedOptionIndex = 0;
-        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
-    } else if (rightNow && !rightWas) {
-        m_selectedGroupIndex = std::min(static_cast<int>(m_currentCategoryGroups.size()) - 1, m_selectedGroupIndex + 1);
-        m_selectedOptionIndex = 0;
-        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
-    } else if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
-        ApplyCurrentSelection();
-        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.9f);
+    } else {
+        if (upNow && !upWas) {
+            if (m_selectedGroupIndex < static_cast<int>(m_currentCategoryGroups.size())) {
+                m_selectedOptionIndex = std::max(0, m_selectedOptionIndex - 1);
+                if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+            }
+        } else if (downNow && !downWas) {
+            if (m_selectedGroupIndex < static_cast<int>(m_currentCategoryGroups.size())) {
+                int maxIdx = std::max(0, static_cast<int>(group->options.size()) - 1);
+                m_selectedOptionIndex = std::min(maxIdx, m_selectedOptionIndex + 1);
+                if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+            }
+        } else if (leftNow && !leftWas) {
+            m_selectedGroupIndex = std::max(0, m_selectedGroupIndex - 1);
+            m_selectedOptionIndex = 0;
+            if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+        } else if (rightNow && !rightWas) {
+            m_selectedGroupIndex = std::min(static_cast<int>(m_currentCategoryGroups.size()) - 1, m_selectedGroupIndex + 1);
+            m_selectedOptionIndex = 0;
+            if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+        } else if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
+            ApplyCurrentSelection();
+            if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.9f);
+        }
     }
 
     upWas=upNow; downWas=downNow; leftWas=leftNow; rightWas=rightNow;
@@ -487,11 +667,40 @@ void CustomizationState::HandleAttributeInput() {
     auto* input = GetInputManager();
     if (!input) return;
 
-    if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
+    static bool upWas=false, downWas=false, leftWas=false, rightWas=false;
+    bool upNow = input->IsKeyPressed(SDL_SCANCODE_UP);
+    bool downNow = input->IsKeyPressed(SDL_SCANCODE_DOWN);
+    bool leftNow = input->IsKeyPressed(SDL_SCANCODE_LEFT);
+    bool rightNow = input->IsKeyPressed(SDL_SCANCODE_RIGHT);
+
+    auto& cz = m_customizationManager->GetPlayerCustomization();
+
+    // Navigate attribute focus (0..3)
+    if (upNow && !upWas) {
+        m_selectedOptionIndex = std::max(0, m_selectedOptionIndex - 1);
+        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+    } else if (downNow && !downWas) {
+        m_selectedOptionIndex = std::min(3, m_selectedOptionIndex + 1);
+        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+    } else if (leftNow && !leftWas) {
+        // Enforce min attribute; refund a point if decreased
+        int* ptrs[4] = { reinterpret_cast<int*>(&cz.strength), reinterpret_cast<int*>(&cz.agility), reinterpret_cast<int*>(&cz.intelligence), reinterpret_cast<int*>(&cz.vitality) };
+        int& v = *ptrs[m_selectedOptionIndex];
+        if (v > s_minAttr) { v -= 1; cz.availablePoints += 1; }
+        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f);
+    } else if (rightNow && !rightWas) {
+        // Enforce max attribute and available points
+        if (cz.availablePoints > 0) {
+            int* ptrs[4] = { reinterpret_cast<int*>(&cz.strength), reinterpret_cast<int*>(&cz.agility), reinterpret_cast<int*>(&cz.intelligence), reinterpret_cast<int*>(&cz.vitality) };
+            int& v = *ptrs[m_selectedOptionIndex];
+            if (v < s_maxAttr) { v += 1; cz.availablePoints -= 1; if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_nav", 0.7f); }
+        }
+    } else if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN)) {
         m_currentMode = UIMode::CATEGORY_SELECTION;
+        if (GetEngine()->GetAudioManager()) GetEngine()->GetAudioManager()->PlaySound("menu_select", 0.9f);
     }
 
-    // TODO: Implement attribute point adjustment
+    upWas=upNow; downWas=downNow; leftWas=leftNow; rightWas=rightNow;
 }
 
 void CustomizationState::HandleConfirmationInput() {
@@ -505,6 +714,57 @@ void CustomizationState::HandleConfirmationInput() {
         }
         StartGame();
     }
+    // Seed starting inventory based on config mapping
+    auto& inv = InventoryManager::Get();
+    inv.LoadItemsConfig();
+    std::string jobId = m_customizationManager->GetPlayerCustomization().characterClass;
+    std::string jl;
+    jl.resize(jobId.size());
+    std::transform(jobId.begin(), jobId.end(), jl.begin(), [](unsigned char c){ return std::tolower(c); });
+
+    ConfigManager cfg;
+    if (cfg.LoadFromFile("assets/config/customization.ini") && cfg.HasSection("starting_items")) {
+        const auto& sect = cfg.GetSections().at("starting_items").GetAll();
+        auto applyLine = [&](const std::string& line){
+            // Comma-separated id:qty pairs
+            size_t start = 0;
+            while (start < line.size()) {
+                size_t comma = line.find(',', start);
+                std::string token = line.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+                size_t colon = token.find(':');
+                if (colon != std::string::npos) {
+                    std::string id = token.substr(0, colon);
+                    int qty = std::max(1, std::atoi(token.substr(colon + 1).c_str()));
+                    inv.AddItem(id, qty);
+                }
+                if (comma == std::string::npos) break;
+                start = comma + 1;
+            }
+        };
+
+        bool matched = false;
+        // First try family keys by substring match
+        static const char* families[] = {"psionic","caster","warrior","archer","rogue","support"};
+        for (const char* fam : families) {
+            if (jl.find(fam) != std::string::npos) {
+                auto it = sect.find(fam);
+                if (it != sect.end()) { applyLine(it->second.AsString()); matched = true; break; }
+            }
+        }
+        // If still not matched, try exact jobId
+        if (!matched) {
+            auto it = sect.find(jl);
+            if (it != sect.end()) { applyLine(it->second.AsString()); matched = true; }
+        }
+        // Fallback to default
+        if (!matched) {
+            auto it = sect.find("default");
+            if (it != sect.end()) { applyLine(it->second.AsString()); }
+        }
+    } else {
+        inv.AddItem("potion", 2);
+    }
+
 }
 
 void CustomizationState::SelectCategory(int index) {
@@ -575,6 +835,11 @@ void CustomizationState::StartGame() {
     // Transition to playing state
     if (GetStateManager()) {
         GetStateManager()->ChangeState(GameStateType::PLAYING);
+    // Reset run total when starting a fresh game
+    if (auto* ps = dynamic_cast<PlayingState*>(GetStateManager()->GetState(GameStateType::PLAYING))) {
+        ps->ResetRunTotal();
+    }
+
     }
 }
 

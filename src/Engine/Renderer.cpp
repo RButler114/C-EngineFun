@@ -6,6 +6,7 @@
  */
 
 #include "Engine/Renderer.h"
+#include "Engine/ConfigSystem.h"
 #include <iostream>
 
 // ========== TEXTURE CLASS IMPLEMENTATION ==========
@@ -217,11 +218,16 @@ Renderer::~Renderer() {
  */
 bool Renderer::Initialize(SDL_Window* window) {
     // Create hardware-accelerated renderer with VSync
+    // Read VSync preference from config
+    ConfigManager cfgVs; bool vsync = true;
+    if (cfgVs.LoadFromFile("assets/config/gameplay.ini")) {
+        vsync = cfgVs.Get("visual", "vsync", true).AsBool();
+    }
+    Uint32 flags = SDL_RENDERER_ACCELERATED | (vsync ? SDL_RENDERER_PRESENTVSYNC : 0);
     m_renderer = SDL_CreateRenderer(
         window,                                           // Target window
         -1,                                              // Use first available driver
-        SDL_RENDERER_ACCELERATED |                       // Hardware acceleration
-        SDL_RENDERER_PRESENTVSYNC                        // VSync (prevents tearing)
+        flags
     );
 
     if (!m_renderer) {
@@ -239,18 +245,69 @@ bool Renderer::Initialize(SDL_Window* window) {
     }
 
     // Enable alpha blending for transparency support
-    // This allows drawing semi-transparent textures and shapes
     SDL_SetRenderDrawBlendMode(m_renderer, SDL_BLENDMODE_BLEND);
+
+    // Configure logical (virtual) resolution and integer scaling
+    // Read from gameplay.ini [visual] section with sensible defaults
+    ConfigManager cfg;
+    int logicalW = 800; int logicalH = 600; bool integerScale = true;
+    if (cfg.LoadFromFile("assets/config/gameplay.ini")) {
+        logicalW = cfg.Get("visual", "logical_width", logicalW).AsInt();
+        logicalH = cfg.Get("visual", "logical_height", logicalH).AsInt();
+        integerScale = cfg.Get("visual", "integer_scale", integerScale).AsBool();
+    }
+    SDL_RenderSetLogicalSize(m_renderer, logicalW, logicalH);
+    SDL_RenderSetIntegerScale(m_renderer, integerScale ? SDL_TRUE : SDL_FALSE);
 
     std::cout << "✅ Hardware-accelerated renderer initialized with VSync" << std::endl;
     std::cout << "✅ Image loading support: PNG, JPG, BMP" << std::endl;
+    std::cout << "✅ Logical size: " << logicalW << "x" << logicalH << ", integerScale=" << (integerScale?"true":"false") << std::endl;
     return true;
+}
+
+void Renderer::GetLogicalSize(int& w, int& h) const {
+    if (!m_renderer) { w = 0; h = 0; return; }
+    SDL_RenderGetLogicalSize(m_renderer, &w, &h);
+}
+
+
+
+void Renderer::UpdateLogicalToOutput() {
+    if (!m_renderer) return;
+    ConfigManager cfg;
+    bool match = false;
+    int defaultLW=1280, defaultLH=720; bool integerScale=false;
+    if (cfg.LoadFromFile("assets/config/gameplay.ini")) {
+        match = cfg.Get("visual","logical_match_output", false).AsBool();
+        defaultLW = cfg.Get("visual","logical_width", defaultLW).AsInt();
+        defaultLH = cfg.Get("visual","logical_height", defaultLH).AsInt();
+        integerScale = cfg.Get("visual","integer_scale", integerScale).AsBool();
+    }
+
+    if (match) {
+        int outW=0, outH=0; SDL_GetRendererOutputSize(m_renderer, &outW, &outH);
+        if (outW > 0 && outH > 0) {
+            SDL_RenderSetLogicalSize(m_renderer, outW, outH);
+            SDL_RenderSetIntegerScale(m_renderer, integerScale ? SDL_TRUE : SDL_FALSE);
+            std::cout << "✅ Logical size matched to output: " << outW << "x" << outH << std::endl;
+            return;
+        }
+    }
+    SDL_RenderSetLogicalSize(m_renderer, defaultLW, defaultLH);
+    SDL_RenderSetIntegerScale(m_renderer, integerScale ? SDL_TRUE : SDL_FALSE);
 }
 
 /**
  * @brief Clean up renderer and all associated resources
  *
  * Safely shuts down the rendering system:
+
+    std::cout << "✅ Hardware-accelerated renderer initialized with VSync" << std::endl;
+    std::cout << "✅ Image loading support: PNG, JPG, BMP" << std::endl;
+    std::cout << "✅ Logical size: " << logicalW << "x" << logicalH << ", integerScale=" << (integerScale?"true":"false") << std::endl;
+    return true;
+}
+
  * 1. Clear texture cache (releases all loaded textures)
  * 2. Destroy SDL renderer (releases graphics context)
  * 3. Shutdown SDL_image (cleanup image loading system)
@@ -282,13 +339,60 @@ void Renderer::Shutdown() {
  * Fills the entire screen buffer with the given color, preparing
  * for the next frame to be drawn. This should be called at the
  * beginning of each frame before drawing anything else.
- *
+
+ */
+
+/**
+ * Draw black bars to cover letterbox/pillarbox areas if present.
+ * Should be called after Clear() and before Present(), if desired.
+ */
+void Renderer::DrawLetterboxBars(int logicalW, int logicalH) {
+    // Compute current output size
+    int outW = 0, outH = 0;
+    SDL_GetRendererOutputSize(m_renderer, &outW, &outH);
+    if (outW <= 0 || outH <= 0 || logicalW <= 0 || logicalH <= 0) return;
+
+    // Determine scaled viewport maintaining aspect ratio
+    float scale = std::min(outW / (float)logicalW, outH / (float)logicalH);
+    int vpW = (int)(logicalW * scale);
+    int vpH = (int)(logicalH * scale);
+    int vpX = (outW - vpW) / 2;
+    int vpY = (outH - vpH) / 2;
+
+    // Top bar
+    if (vpY > 0) {
+        SDL_Rect top{0, 0, outW, vpY};
+        SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(m_renderer, &top);
+    }
+    // Bottom bar
+    if (vpY + vpH < outH) {
+        SDL_Rect bottom{0, vpY + vpH, outW, outH - (vpY + vpH)};
+        SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(m_renderer, &bottom);
+    }
+    // Left bar
+    if (vpX > 0) {
+        SDL_Rect left{0, vpY, vpX, vpH};
+        SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(m_renderer, &left);
+    }
+    // Right bar
+    if (vpX + vpW < outW) {
+        SDL_Rect right{vpX + vpW, vpY, outW - (vpX + vpW), vpH};
+        SDL_SetRenderDrawColor(m_renderer, 0, 0, 0, 255);
+        SDL_RenderFillRect(m_renderer, &right);
+    }
+}
+
+/**
+ * @brief Clear the screen with specified background color
  * @param color Background color to clear with (default: black)
- *
  * @note Called automatically by Engine::Run() before Render()
  * @note The cleared buffer is not visible until Present() is called
  * @note Alpha component affects blending with previous frame content
  */
+
 void Renderer::Clear(const Color& color) {
     // Set the clear color for this frame
     SDL_SetRenderDrawColor(m_renderer, color.r, color.g, color.b, color.a);

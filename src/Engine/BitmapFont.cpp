@@ -84,8 +84,21 @@ std::unordered_map<char, std::vector<std::string>> BitmapFont::GetFontPatterns()
     return patterns;
 }
 
+static float g_uiGlobalScale = 1.0f;
+
+void BitmapFont::SetGlobalScale(float scale) {
+    g_uiGlobalScale = (scale <= 0.1f) ? 0.1f : scale;
+}
+
+float BitmapFont::GetGlobalScale() {
+    return g_uiGlobalScale;
+}
+
 void BitmapFont::DrawText(Renderer* renderer, const std::string& text, int x, int y, int scale, const Color& color) {
     auto patterns = GetFontPatterns();
+
+    // Apply global UI scale to draw scale
+    int s = std::max(1, static_cast<int>(scale * g_uiGlobalScale));
     int currentX = x;
 
     for (char c : text) {
@@ -97,13 +110,13 @@ void BitmapFont::DrawText(Renderer* renderer, const std::string& text, int x, in
             for (int row = 0; row < 7; row++) {
                 for (int col = 0; col < 5; col++) {
                     if (pattern[row][col] == '#') {
-                        Rectangle pixelRect(currentX + col * scale, y + row * scale, scale, scale);
+                        Rectangle pixelRect(currentX + col * s, y + row * s, s, s);
                         renderer->DrawRectangle(pixelRect, color, true);
                     }
                 }
             }
         }
 
-        currentX += 6 * scale; // Move to next character position (5 + 1 spacing)
+        currentX += 6 * s; // Move to next character position (5 + 1 spacing)
     }
 }

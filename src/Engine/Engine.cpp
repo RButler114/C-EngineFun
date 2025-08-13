@@ -10,6 +10,8 @@
 #include "Engine/Renderer.h"
 #include "Engine/InputManager.h"
 #include "Engine/AudioManager.h"
+#include "Engine/ConfigSystem.h"
+#include "Engine/BitmapFont.h"
 #include <SDL2/SDL.h>
 #include <iostream>
 #include <thread>
@@ -99,7 +101,43 @@ bool Engine::Initialize(const char* title, int width, int height) {
         std::cerr << "   Check graphics drivers and OpenGL/DirectX support" << std::endl;
         return false;
     }
+
+    // Configure UI scale from config after renderer is ready
+    {
+        ConfigManager cfg;
+        if (cfg.LoadFromFile("assets/config/gameplay.ini")) {
+            bool autoScale = cfg.Get("visual", "ui_scale_auto", true).AsBool();
+            if (autoScale) {
+                int logicalW = cfg.Get("visual", "logical_width", 800).AsInt();
+                int logicalH = cfg.Get("visual", "logical_height", 600).AsInt();
+                float ratioW = logicalW / 800.0f;
+                float ratioH = logicalH / 600.0f;
+                float scaleF = std::min(ratioW, ratioH);
+                int scaleI = std::max(1, (int)std::round(scaleF));
+                BitmapFont::SetGlobalScale((float)scaleI);
+                std::cout << "✅ UI scale (auto) set to " << scaleI << " (from logical " << logicalW << "x" << logicalH << ")" << std::endl;
+            } else {
+                float uiScale = cfg.Get("visual", "ui_scale", 1.0f).AsFloat();
+                BitmapFont::SetGlobalScale(uiScale);
+                std::cout << "✅ UI scale (manual) set to " << uiScale << std::endl;
+            }
+        }
+    }
+
+    // Apply initial FPS limit (0 = Unlimited)
+    {
+        ConfigManager cfg;
+        if (cfg.LoadFromFile("assets/config/gameplay.ini")) {
+            int fpsLimit = cfg.Get("visual", "fps_limit", 60).AsInt();
+            SetTargetFPS(fpsLimit <= 0 ? 0 : fpsLimit);
+            std::cout << "✅ Target FPS set to " << (fpsLimit <= 0 ? 0 : fpsLimit) << std::endl;
+        }
+    }
+
     std::cout << "✅ Hardware-accelerated renderer initialized" << std::endl;
+
+    // Optionally update logical size to match output to reduce black bars
+    if (m_renderer) m_renderer->UpdateLogicalToOutput();
 
     // Step 4: Create input manager for user interaction
     // Input manager handles keyboard, mouse, and gamepad input
@@ -196,7 +234,41 @@ void Engine::Run() {
         CapFrameRate();
     }
 
+    // End while(m_isRunning)
     std::cout << "🏁 Game loop ended" << std::endl;
+}
+
+
+void Engine::RecreateRendererFromConfig() {
+    if (!m_window) return;
+    // Destroy current renderer by resetting unique_ptr
+    m_renderer.reset();
+    // Create new renderer (Renderer::Initialize reads vsync/logical size from config)
+    m_renderer = std::make_unique<Renderer>();
+    if (!m_renderer->Initialize(m_window->GetSDLWindow())) {
+        std::cerr << "❌ Renderer reinitialization failed!" << std::endl;
+    } else {
+        // Re-apply UI scale and FPS limit from config
+        ConfigManager cfg;
+        if (cfg.LoadFromFile("assets/config/gameplay.ini")) {
+            bool autoScale = cfg.Get("visual", "ui_scale_auto", true).AsBool();
+            if (autoScale) {
+                int logicalW = cfg.Get("visual", "logical_width", 800).AsInt();
+                int logicalH = cfg.Get("visual", "logical_height", 600).AsInt();
+                float ratioW = logicalW / 800.0f;
+                float ratioH = logicalH / 600.0f;
+                float scaleF = std::min(ratioW, ratioH);
+                int scaleI = std::max(1, (int)std::round(scaleF));
+                BitmapFont::SetGlobalScale((float)scaleI);
+            } else {
+                float uiScale = cfg.Get("visual", "ui_scale", 1.0f).AsFloat();
+                BitmapFont::SetGlobalScale(uiScale);
+            }
+            int fpsLimit = cfg.Get("visual", "fps_limit", 60).AsInt();
+            SetTargetFPS(fpsLimit <= 0 ? 0 : fpsLimit);
+        }
+        std::cout << "✅ Renderer reinitialized from config" << std::endl;
+    }
 }
 
 /**
@@ -345,16 +417,17 @@ void Engine::CapFrameRate() {
     auto frameEndTime = std::chrono::high_resolution_clock::now();
     auto frameDuration = std::chrono::duration_cast<std::chrono::microseconds>(frameEndTime - m_frameStartTime);
 
-    // Calculate target frame time based on desired FPS
-    // Example: 60 FPS = 1,000,000 microseconds / 60 = 16,667 microseconds per frame
-    auto targetFrameTime = std::chrono::microseconds(1000000 / m_targetFPS);
-
-    // If frame finished early, sleep for the remaining time
-    if (frameDuration < targetFrameTime) {
-        auto sleepTime = targetFrameTime - frameDuration;
-        std::this_thread::sleep_for(sleepTime);
+    // If target FPS is 0 (Unlimited), skip sleeping
+    if (m_targetFPS > 0) {
+        // Calculate target frame time based on desired FPS
+        auto targetFrameTime = std::chrono::microseconds(1000000 / m_targetFPS);
+        // If frame finished early, sleep for the remaining time
+        if (frameDuration < targetFrameTime) {
+            auto sleepTime = targetFrameTime - frameDuration;
+            std::this_thread::sleep_for(sleepTime);
+        }
     }
 
-    // Note: If frameDuration >= targetFrameTime, no sleep occurs
+    // Note: If frameDuration >= targetFrameTime, or unlimited, no sleep occurs
     // This allows natural slowdown when the system can't maintain target FPS
 }

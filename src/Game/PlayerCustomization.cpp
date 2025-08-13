@@ -48,7 +48,8 @@ void CustomizationManager::InitializeDefaults() {
     SetupBasicInfoGroups();
     SetupAppearanceGroups();
     SetupAttributeGroups();
-    SetupEquipmentGroups();
+    // Equipment selection now handled in Pause -> Party -> Equip
+    // SetupEquipmentGroups();
 }
 
 void CustomizationManager::AddGroup(const CustomizationGroup& group) {
@@ -115,15 +116,26 @@ void CustomizationManager::ApplyCustomizationToPlayerData() {
             m_playerCustomization.spritePath = spriteGroup->options[spriteGroup->selectedIndex].value;
         }
     } else {
-        // fallback by broad class
-        if (m_playerCustomization.characterClass == "warrior") {
-            m_playerCustomization.spritePath = "little_adventurer.png";
-        } else if (m_playerCustomization.characterClass == "archer") {
-            m_playerCustomization.spritePath = "archer_sprite.png";
-        } else if (m_playerCustomization.characterClass == "mage") {
-            m_playerCustomization.spritePath = "mage_sprite.png";
-        } else if (m_playerCustomization.characterClass == "rogue") {
-            m_playerCustomization.spritePath = "rogue_sprite.png";
+        // fallback by configured sprite mapping if available
+        ConfigManager cfg;
+        if (cfg.LoadFromFile("assets/config/customization.ini") && cfg.HasSection("sprite_mappings")) {
+            const auto& sect = cfg.GetSections().at("sprite_mappings").GetAll();
+            std::string key = m_playerCustomization.characterClass + std::string("_default");
+            auto it = sect.find(key);
+            if (it != sect.end()) {
+                m_playerCustomization.spritePath = it->second.AsString();
+            }
+        } else {
+            // final hardcoded fallback for dev convenience
+            if (m_playerCustomization.characterClass == "warrior") {
+                m_playerCustomization.spritePath = "little_adventurer.png";
+            } else if (m_playerCustomization.characterClass == "archer") {
+                m_playerCustomization.spritePath = "archer_sprite.png";
+            } else if (m_playerCustomization.characterClass == "mage") {
+                m_playerCustomization.spritePath = "mage_sprite.png";
+            } else if (m_playerCustomization.characterClass == "rogue") {
+                m_playerCustomization.spritePath = "rogue_sprite.png";
+            }
         }
     }
 
@@ -132,10 +144,9 @@ void CustomizationManager::ApplyCustomizationToPlayerData() {
 }
 
 void CustomizationManager::SetupBasicInfoGroups() {
-    // Character Class selection
+    // Character Class selection - use config-defined classes only
     CustomizationGroup classGroup("character_class", "Character Class", CustomizationCategory::BASIC_INFO);
 
-    // Load from config [character_classes] if available; fallback to built-ins
     ConfigManager cfg;
     if (cfg.LoadFromFile("assets/config/customization.ini") && cfg.HasSection("character_classes")) {
         const auto& sect = cfg.GetSections().at("character_classes").GetAll();
@@ -161,10 +172,13 @@ void CustomizationManager::SetupBasicInfoGroups() {
             if (!desc.empty()) classGroup.options.back().description = desc;
         }
     } else {
-        classGroup.options.emplace_back("warrior", "Warrior", "warrior");
-        classGroup.options.emplace_back("archer", "Archer", "archer");
-        classGroup.options.emplace_back("mage", "Mage", "mage");
-        classGroup.options.emplace_back("rogue", "Rogue", "rogue");
+        std::cerr << "No [character_classes] found in customization.ini - please add entries." << std::endl;
+    }
+
+    // If no class chosen yet, default to first option from config
+    if (m_playerCustomization.characterClass.empty() && !classGroup.options.empty()) {
+        classGroup.selectedIndex = 0;
+        m_playerCustomization.characterClass = classGroup.options[0].value; // jobId
     }
 
     AddGroup(classGroup);
@@ -227,19 +241,6 @@ void CustomizationManager::SetupAttributeGroups() {
 }
 
 void CustomizationManager::SetupEquipmentGroups() {
-    // Starting Weapon
-    CustomizationGroup weaponGroup("starting_weapon", "Starting Weapon", CustomizationCategory::EQUIPMENT);
-    weaponGroup.options.emplace_back("sword", "Iron Sword", "sword");
-    weaponGroup.options.emplace_back("bow", "Wooden Bow", "bow");
-    weaponGroup.options.emplace_back("staff", "Magic Staff", "staff");
-    weaponGroup.options.emplace_back("dagger", "Steel Dagger", "dagger");
-    AddGroup(weaponGroup);
-
-    // Starting Armor
-    CustomizationGroup armorGroup("starting_armor", "Starting Armor", CustomizationCategory::EQUIPMENT);
-    armorGroup.options.emplace_back("leather", "Leather Armor", "leather");
-    armorGroup.options.emplace_back("cloth", "Cloth Robes", "cloth");
-    armorGroup.options.emplace_back("chain", "Chain Mail", "chain");
-    armorGroup.options.emplace_back("light", "Light Armor", "light");
-    AddGroup(armorGroup);
+    // Deprecated: equipment is equipped later via Pause -> Party -> Equip
+    // Kept empty intentionally
 }

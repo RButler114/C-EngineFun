@@ -100,14 +100,14 @@ Entity CharacterFactory::CreateCustomizedPlayer(float x, float y, const PlayerCu
              || j == "dreamsinger" || j == "astromancer") {
         setClass(CharacterTypeComponent::CharacterClass::MAGE);
     } else if (j == "warrior" || j == "archer" || j == "mage" || j == "rogue") {
-        // Keep support for original four
+        // Backwards-compatible support for original four generic classes
         if (j == "warrior") setClass(CharacterTypeComponent::CharacterClass::WARRIOR);
         else if (j == "archer") setClass(CharacterTypeComponent::CharacterClass::ARCHER);
         else if (j == "mage") setClass(CharacterTypeComponent::CharacterClass::MAGE);
         else if (j == "rogue") setClass(CharacterTypeComponent::CharacterClass::ROGUE);
     } else {
-        // Default mapping
-        setClass(CharacterTypeComponent::CharacterClass::WARRIOR);
+        // Unrecognized job id: keep the class from the configured template rather than forcing a generic default
+        std::cout << "⚠️  Unrecognized job id '" << job << "' - keeping template class\n";
     }
 
     // Propagate the chosen fine-grained job id

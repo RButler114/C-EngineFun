@@ -9,6 +9,7 @@
 
 #include "Game/GameState.h"
 #include "Game/PlayerCustomization.h"
+#include "Game/GameConfig.h"
 #include <memory>
 #include <string>
 
@@ -61,14 +62,17 @@ private:
     
     // Attribute adjustment state
     std::string m_selectedAttributeGroup;
-    
+
+    // Game configuration for animation and sprite settings
+    std::unique_ptr<GameConfig> m_gameConfig;
+
     // UI helpers
     void UpdateCategorySelection();
     void UpdateOptionSelection();
     void UpdateNameInput();
     void UpdateAttributeAdjustment();
     void UpdateConfirmation();
-    
+
     void RenderCategorySelection();
     void RenderOptionSelection();
     void RenderNameInput();
@@ -76,28 +80,28 @@ private:
     void RenderConfirmation();
     void RenderCharacterPreview();
     void RenderInstructions();
-    
+
     // Input handling
     void HandleCategoryInput();
     void HandleOptionInput();
     void HandleNameInputKeys();
     void HandleAttributeInput();
     void HandleConfirmationInput();
-    
+
     // Navigation helpers
     void SelectCategory(int index);
     void SelectOption(int groupIndex, int optionIndex);
     void ApplyCurrentSelection();
     void StartGame();
     void ReturnToMenu();
-    
+
     // UI constants
     static constexpr int SCREEN_WIDTH = 800;
     static constexpr int SCREEN_HEIGHT = 600;
     static constexpr int MARGIN = 40;
     static constexpr int LINE_HEIGHT = 25;
     static constexpr int TITLE_HEIGHT = 60;
-    
+
     // Color constants (RGB values)
     static const int COLOR_BACKGROUND_R = 20;
     static const int COLOR_BACKGROUND_G = 25;

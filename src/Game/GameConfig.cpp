@@ -198,6 +198,27 @@ int GameConfig::GetAnimationSpriteWidth() const {
 int GameConfig::GetAnimationSpriteHeight() const {
     return m_gameplayConfig->Get("animation", "sprite_height", 48).AsInt();
 }
+float GameConfig::GetLevelEndDistance() const {
+    if (!m_currentLevel.empty() && m_levelConfig->HasSection("win")) {
+        return m_levelConfig->Get("win", "end_distance", 0.0f).AsFloat();
+    }
+    return m_gameplayConfig->Get("win", "end_distance", 0.0f).AsFloat();
+}
+
+bool GameConfig::GetRequireBossAndEnd() const {
+    if (!m_currentLevel.empty() && m_levelConfig->HasSection("win")) {
+        return m_levelConfig->Get("win", "require_boss_and_end", false).AsBool();
+    }
+    return m_gameplayConfig->Get("win", "require_boss_and_end", false).AsBool();
+}
+bool GameConfig::GetWinDebugOverlay() const {
+    if (!m_currentLevel.empty() && m_levelConfig->HasSection("win")) {
+        return m_levelConfig->Get("win", "debug_overlay", true).AsBool();
+    }
+    return m_gameplayConfig->Get("win", "debug_overlay", true).AsBool();
+}
+
+
 
 float GameConfig::GetAnimationSpriteScale() const {
     return m_gameplayConfig->Get("animation", "sprite_scale", 1.0f).AsFloat();
@@ -680,6 +701,8 @@ bool GameConfig::LoadLevelConfig(const std::string& levelName) {
     if (m_levelConfig->LoadFromFile(m_levelConfigPath)) {
         m_currentLevel = levelName;
         m_lastLevelModTime = GetFileModificationTime(m_levelConfigPath);
+        // Parse any explicit placements present in this level file
+        ParseLevelEnemyPlacements();
         std::cout << "🎮 Loaded level config: " << levelName << " from " << m_levelConfigPath << std::endl;
         return true;
     } else {
@@ -695,9 +718,68 @@ void GameConfig::ClearLevelOverrides() {
     m_lastLevelModTime = 0;
     // Clear the level config manager
     m_levelConfig = std::make_unique<ConfigManager>();
+    m_levelEnemyPlacements.clear();
     std::cout << "🔄 Cleared level overrides, using base config" << std::endl;
 }
 
 const std::string& GameConfig::GetCurrentLevel() const {
     return m_currentLevel;
 }
+
+// Parse explicit enemy placements if present in level config
+void GameConfig::ParseLevelEnemyPlacements() {
+    m_levelEnemyPlacements.clear();
+    if (!m_levelConfig) return;
+
+    const auto& sections = m_levelConfig->GetSections();
+    // Sections named enemy.N or enemy_N
+    for (const auto& [sectionName, section] : sections) {
+        if (sectionName.rfind("enemy.", 0) == 0 || sectionName.rfind("enemy_", 0) == 0) {
+            LevelEnemyPlacement p;
+            p.type = m_levelConfig->Get(sectionName, "type", "goblin").AsString();
+            p.x = m_levelConfig->Get(sectionName, "x", 0.0f).AsFloat();
+            p.y = m_levelConfig->Get(sectionName, "y", 0.0f).AsFloat();
+            p.vx = m_levelConfig->Get(sectionName, "vx", 0.0f).AsFloat();
+            p.vy = m_levelConfig->Get(sectionName, "vy", 0.0f).AsFloat();
+            m_levelEnemyPlacements.push_back(p);
+        }
+    }
+}
+
+// Win/progression helpers
+bool GameConfig::GetWinOnTimer() const {
+    if (!m_currentLevel.empty() && m_levelConfig->HasSection("win")) {
+        return m_levelConfig->Get("win", "win_on_timer", true).AsBool();
+    }
+    return m_gameplayConfig->Get("win", "win_on_timer", true).AsBool();
+}
+
+float GameConfig::GetWinSurviveTimeSeconds() const {
+    if (!m_currentLevel.empty() && m_levelConfig->HasSection("win")) {
+        return m_levelConfig->Get("win", "survive_time_seconds", GetGameDurationSeconds()).AsFloat();
+    }
+    return m_gameplayConfig->Get("win", "survive_time_seconds", GetGameDurationSeconds()).AsFloat();
+}
+
+std::string GameConfig::GetNextLevelName() const {
+    if (!m_currentLevel.empty() && m_levelConfig->HasSection("win")) {
+        return m_levelConfig->Get("win", "next_level", "").AsString();
+    }
+    return m_gameplayConfig->Get("win", "next_level", "").AsString();
+}
+
+
+bool GameConfig::GetWinOnBossDefeat() const {
+    if (!m_currentLevel.empty() && m_levelConfig->HasSection("win")) {
+        return m_levelConfig->Get("win", "win_on_boss_defeat", false).AsBool();
+    }
+    return m_gameplayConfig->Get("win", "win_on_boss_defeat", false).AsBool();
+}
+
+bool GameConfig::GetWinOnDefeatAllEnemies() const {
+    if (!m_currentLevel.empty() && m_levelConfig->HasSection("win")) {
+        return m_levelConfig->Get("win", "win_on_defeat_all_enemies", false).AsBool();
+    }
+    return m_gameplayConfig->Get("win", "win_on_defeat_all_enemies", false).AsBool();
+}
+

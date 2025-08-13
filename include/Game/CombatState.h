@@ -47,10 +47,12 @@ struct CombatParticipant {
     float initiative;
     float currentHealth;
     float maxHealth;
+    float currentMana;
+    float maxMana;
 
     CombatParticipant(Entity e, bool player, float init)
         : entity(e), isPlayer(player), isAlive(true), turnOrder(0), initiative(init),
-          currentHealth(100.0f), maxHealth(100.0f) {}
+          currentHealth(100.0f), maxHealth(100.0f), currentMana(30.0f), maxMana(30.0f) {}
 };
 
 /**
@@ -76,14 +78,19 @@ public:
     void Update(float deltaTime) override;
     void Render() override;
     void HandleInput() override;
-    
+
     /**
      * @brief Initialize combat with specific participants
      * @param player Player entity
      * @param enemies Vector of enemy entities
      */
     void InitializeCombat(Entity player, const std::vector<Entity>& enemies);
-    
+
+    /**
+     * @brief Inform combat whether this encounter is a boss fight
+     */
+    void SetBossEncounter(bool isBoss) { m_isBossEncounter = isBoss; }
+
     /**
      * @brief Set the position to return to after combat
      * @param x X coordinate
@@ -112,16 +119,24 @@ private:
     int m_goldGained;
     bool m_playerVictory;
     bool m_playerFled;
-    
+    bool m_isBossEncounter = false;
+
     // Return position
     float m_returnX;
     float m_returnY;
-    
+
     // UI state
     float m_messageTimer;
     std::string m_currentMessage;
     bool m_showActionMenu;
-    
+
+    // Item selection menu state (for CombatAction::ITEM)
+    bool m_itemMenuOpen = false;
+    int m_itemMenuIndex = 0; // index into filtered consumable list
+    bool m_itemTargetSelecting = false; // selecting which party member to use on
+    int m_itemTargetIndex = 0;          // index into filtered player list
+    int m_itemMenuChosenIndex = -1;     // chosen consumable row before target select
+
     // Phase management
     void UpdateBattleStart(float deltaTime);
     void UpdateTurnStart(float deltaTime);
@@ -130,7 +145,7 @@ private:
     void UpdateTurnEnd(float deltaTime);
     void UpdateBattleEnd(float deltaTime);
     void UpdateTransitionOut(float deltaTime);
-    
+
     // Combat mechanics
     void CalculateTurnOrder();
     void ProcessPlayerAction();
@@ -139,12 +154,12 @@ private:
     void ExecuteDefend(Entity defender);
     void ExecuteMagic(Entity caster, Entity target);
     bool AttemptFlee();
-    
+
     // Battle state checks
     bool IsBattleOver() const;
     bool AreAllEnemiesDead() const;
     bool IsPlayerDead() const;
-    
+
     // UI rendering
     void RenderCombatUI();
     void RenderParticipants();
@@ -152,17 +167,20 @@ private:
     void RenderHealthBars();
     void RenderMessage();
     void RenderTurnIndicator();
-    
+    void RenderItemMenu();
+
     // Input handling
     void HandleActionSelection();
     void HandleMenuNavigation();
-    
+    void HandleItemMenuInput();
+
     // Utility
     void ShowMessage(const std::string& message, float duration = 2.0f);
     void AdvanceToNextTurn();
     void EndBattle(bool playerWon);
     void CalculateBattleRewards();
     void HandleCombatEvent(const CombatEvent& event);
+    bool UseSelectedItem();
 
     // Action availability
     void UpdateAvailableActions();

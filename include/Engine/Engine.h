@@ -206,6 +206,16 @@ private:
      */
     void CapFrameRate();
 
+public:
+    /**
+     * @brief Recreate renderer using current config (applies VSync changes)
+     *
+     * Destroys the current renderer and creates a new one bound to the same window,
+     * reading vsync and logical size settings from gameplay.ini.
+     */
+    void RecreateRendererFromConfig();
+
+private:
     std::unique_ptr<Window> m_window;           ///< Window management system
     std::unique_ptr<Renderer> m_renderer;       ///< Rendering system
     std::unique_ptr<InputManager> m_inputManager; ///< Input handling system

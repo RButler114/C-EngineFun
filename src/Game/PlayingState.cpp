@@ -9,6 +9,9 @@
 #include "Engine/BitmapFont.h"
 #include "Engine/SpriteRenderer.h"
 #include "ECS/ECS.h"
+#include "Game/PartyManager.h"
+#include "Game/PlayerCustomization.h"
+
 #include <iostream>
 #include <cstdlib>
 #include <cmath>
@@ -38,6 +41,10 @@ PlayingState::PlayingState()
     m_playerX = m_gameConfig->GetPlayerStartX();
     m_playerY = m_gameConfig->GetPlayerStartY();
 
+
+    // Initialize party based on customization (ensures Pause menu shows party)
+    PartyManager::Get().InitializeFromCustomization(CustomizationManager::GetInstance().GetPlayerCustomization());
+
     // Initialize collision cooldown
     m_collisionCooldown = 0.0f;
 }
@@ -61,6 +68,13 @@ void PlayingState::OnEnter() {
             }
         }
     }
+    // Default to level1 on first entry if no level is active
+    if (m_gameConfig && m_gameConfig->GetCurrentLevel().empty()) {
+        if (m_gameConfig->LoadLevelConfig("level1")) {
+            std::cout << "📦 Defaulting to level1 on first start" << std::endl;
+        }
+    }
+
 
     // Initialize ECS
     m_entityManager = std::make_unique<EntityManager>();
@@ -366,6 +380,51 @@ void PlayingState::Render() {
         s_frogFramesLoaded = true;
     }
 
+    // Try to render actual ECS enemies if present
+    bool drewAny = false;
+    if (m_entityManager) {
+        auto entities = m_entityManager->GetEntitiesWith<TransformComponent, CharacterTypeComponent>();
+        for (auto e : entities) {
+            auto* type = m_entityManager->GetComponent<CharacterTypeComponent>(e);
+            if (!type) continue;
+            if (type->type != CharacterTypeComponent::CharacterType::ENEMY &&
+                type->type != CharacterTypeComponent::CharacterType::BOSS) continue;
+            auto* transform = m_entityManager->GetComponent<TransformComponent>(e);
+            if (!transform) continue;
+
+            int enemyScreenX = static_cast<int>(transform->x - m_cameraX);
+            if (enemyScreenX <= -enemyWidth || enemyScreenX >= screenWidth) continue;
+
+            bool drewSprite = false;
+            if (auto* sprite = m_entityManager->GetComponent<SpriteComponent>(e)) {
+                // Draw using sprite texture path and dimensions
+                SpriteFrame f(0, 0, sprite->width, sprite->height);
+                SpriteRenderer::RenderSprite(renderer, sprite->texturePath, enemyScreenX, static_cast<int>(transform->y), f, true, 1.0f);
+                drewSprite = true;
+            }
+
+            if (!drewSprite) {
+                // Fallback: use RenderComponent color/size or default rectangle
+                Color enemyColor = m_gameConfig->GetEnemyRedColor();
+                int w = enemyWidth, h = enemyHeight;
+                if (auto* rc = m_entityManager->GetComponent<RenderComponent>(e)) {
+                    enemyColor = Color(rc->r, rc->g, rc->b, 255);
+                    w = rc->width; h = rc->height;
+                }
+                Rectangle enemyRect(enemyScreenX, static_cast<int>(transform->y), w, h);
+                renderer->DrawRectangle(enemyRect, enemyColor, true);
+            }
+            drewAny = true;
+        }
+    }
+    // If we rendered any ECS enemies, we can skip preview rectangles
+    if (drewAny) {
+        DrawHUD();
+        return;
+    }
+
+
+
     for (int i = 0; i < enemyCount; i++) {
         float enemyX = enemySpawnStartX + i * enemySpawnSpacingX;
         float enemyY = m_gameConfig->GetPlayerStartY() + (i % 2) * enemySpawnHeightVariation;
@@ -614,7 +673,38 @@ void PlayingState::CreatePlayer() {
 void PlayingState::CreateEnemies() {
     if (!m_entityManager) return;
 
-    // Create enemies spread across the scrolling world using config values
+    // If the level defines explicit placements, use them via CharacterFactory
+    const auto& placements = m_gameConfig->GetLevelEnemyPlacements();
+    if (!placements.empty() && m_characterFactory) {
+        int count = 0;
+        for (const auto& p : placements) {
+            float x = p.x;
+            float y = p.y == 0.0f ? m_gameConfig->GetPlayerStartY() : p.y;
+            Entity enemy = m_characterFactory->CreateCharacter(p.type, x, y);
+            if (!enemy.IsValid()) {
+                std::cout << "⚠️  Placement create failed for type '" << p.type << "', falling back to basic enemy" << std::endl;
+                enemy = m_characterFactory->CreateBasicEnemy(x, y);
+            }
+            if (enemy.IsValid()) {
+                if (auto* vel = m_entityManager->GetComponent<VelocityComponent>(enemy)) {
+                    if (p.vx != 0.0f || p.vy != 0.0f) { vel->vx = p.vx; vel->vy = p.vy; }
+                } else {
+                    m_entityManager->AddComponent<VelocityComponent>(enemy, p.vx, p.vy);
+                }
+                // Ensure collider exists for combat triggering
+                if (!m_entityManager->GetComponent<CollisionComponent>(enemy)) {
+                    int w = m_gameConfig->GetEnemyWidth();
+                    int h = m_gameConfig->GetEnemyHeight();
+                    m_entityManager->AddComponent<CollisionComponent>(enemy, static_cast<float>(w), static_cast<float>(h));
+                }
+                count++;
+            }
+        }
+        std::cout << "Created " << count << " enemies from explicit level placements" << std::endl;
+        return; // Done
+    }
+
+    // Otherwise, create enemies spread across the scrolling world using config values
     int enemyCount = m_gameConfig->GetEnemyCount();
     float spawnStartX = m_gameConfig->GetEnemySpawnStartX();
     float spawnSpacingX = m_gameConfig->GetEnemySpawnSpacingX();
@@ -765,15 +855,44 @@ void PlayingState::DrawHUD() {
     Color instructionsColor = m_gameConfig->GetTextInstructionsColor();
     BitmapFont::DrawText(renderer, instructions, instructionsX, instructionsY, instructionsScale, instructionsColor);
 
-    // Draw current level indicator
+    // Current level indicator moved to HUD top-left block, smaller scale
     std::string currentLevel = m_gameConfig->GetCurrentLevel();
-    if (currentLevel.empty()) {
-        currentLevel = "Base";
-    }
+    if (currentLevel.empty()) { currentLevel = "Base"; }
     std::string levelText = "LEVEL: " + currentLevel;
-    int levelX = screenWidth - 150; // Right side of screen
-    int levelY = scoreY; // Same height as score
+    int levelX = scoreX + 180; // to the right of SCORE
+    int levelY = scoreY; // same baseline
     BitmapFont::DrawText(renderer, levelText, levelX, levelY, scoreScale, textNormalColor);
+
+    // Distance HUD: progress to end distance (moved below timer, right side)
+    float endDist = m_gameConfig->GetLevelEndDistance();
+    if (endDist > 0.0f) {
+        float traveled = std::max(0.0f, m_playerX - m_gameConfig->GetPlayerStartX());
+        float progress = std::min(1.0f, traveled / endDist);
+        int barWidth = 220;
+        int barHeight = 10;
+        int barX = screenWidth - barWidth - 10; // right-aligned
+        int barY = hudHeight - hudBorderHeight - barHeight - 6;
+        // background
+        renderer->DrawRectangle(Rectangle(barX, barY, barWidth, barHeight), Color(40,40,40,255), true);
+        // fill
+        renderer->DrawRectangle(Rectangle(barX, barY, (int)(barWidth * progress), barHeight), Color(80,200,120,255), true);
+        // label above bar
+        std::string dtext = "DIST: " + std::to_string((int)traveled) + "/" + std::to_string((int)endDist);
+        BitmapFont::DrawText(renderer, dtext, barX, barY - 12, 1, textNormalColor);
+    }
+
+    // Debug overlay consolidated: single line, anchored lower-left under HUD
+    if (m_gameConfig->GetWinDebugOverlay()) {
+        std::string dbg = "t=" + std::to_string((int)m_gameTime) + "/" + std::to_string((int)gameDuration);
+        float traveled = std::max(0.0f, m_playerX - m_gameConfig->GetPlayerStartX());
+        float endd = m_gameConfig->GetLevelEndDistance();
+        bool bossRequired = m_gameConfig->GetWinOnBossDefeat();
+        bool requireBoth = m_gameConfig->GetRequireBossAndEnd();
+        dbg += "  dist=" + std::to_string((int)traveled) + "/" + std::to_string((int)endd);
+        dbg += bossRequired ? (requireBoth ? "  req:boss+end" : "  req:boss|end") : "  req:end";
+        dbg += m_bossDefeated ? "  boss:done" : "  boss:--";
+        BitmapFont::DrawText(renderer, dbg, 10, hudHeight + 8, 1, m_gameConfig->GetTextInstructionsColor());
+    }
 
     // Draw warning when time is low
     if (timeLeft < warningThreshold && static_cast<int>(m_gameTime * 4) % 2 == 0) {
@@ -783,28 +902,110 @@ void PlayingState::DrawHUD() {
         int warningX = (screenWidth - warningWidth) / 2;
         int warningY = m_gameConfig->GetWarningY();
         Color urgentColor = m_gameConfig->GetTextUrgentColor();
-
         BitmapFont::DrawText(renderer, warning, warningX, warningY, warningScale, urgentColor);
     }
 }
 
 void PlayingState::CheckGameOver() {
-    // Game over condition using config duration
+    // Win/lose conditions
     float gameDuration = m_gameConfig->GetGameDurationSeconds();
-    if (m_gameTime > gameDuration) {
-        std::cout << "Game Over - Time limit reached! Final Score: " << m_score << std::endl;
+
+
+
+    // Immediate victory on reaching end distance (if not requiring both)
+    float endDist = m_gameConfig->GetLevelEndDistance();
+    if (endDist > 0.0f) {
+        float traveled = (m_playerX - m_gameConfig->GetPlayerStartX());
+        bool reachedEnd = traveled >= endDist;
+        bool bossRequired = m_gameConfig->GetWinOnBossDefeat();
+        bool requireBoth = m_gameConfig->GetRequireBossAndEnd();
+        if (reachedEnd && (!bossRequired || (bossRequired && (!requireBoth || (requireBoth && m_bossDefeated))))) {
+            std::cout << "✅ Reached level end distance! traveled=" << traveled << " end=" << endDist
+                      << " bossRequired=" << bossRequired << " requireBoth=" << requireBoth
+                      << " bossDefeated=" << m_bossDefeated << std::endl;
+            if (auto* manager = GetStateManager()) {
+                if (auto* state = manager->GetState(GameStateType::GAME_OVER)) {
+                    if (auto* gameOver = dynamic_cast<GameOverState*>(state)) {
+                        gameOver->SetScore(m_score);
+                        gameOver->SetOutcome(GameOverState::Outcome::WIN);
+                        gameOver->SetRunTotal(m_totalRunScore + m_score);
+                        gameOver->SetNextLevel(m_gameConfig->GetNextLevelName());
+                    }
+                }
+                manager->ChangeState(GameStateType::GAME_OVER);
+            }
+            return;
+        }
+
+
+    }
+
+    // Lose or win on timeout based on boss/end conditions (per design)
+    if (m_gameTime >= gameDuration) {
+        float endDistToUse = m_gameConfig->GetLevelEndDistance();
+        float traveled = (m_playerX - m_gameConfig->GetPlayerStartX());
+        bool reachedEnd = (endDistToUse > 0.0f) && (traveled >= endDistToUse);
+        bool bossRequired = m_gameConfig->GetWinOnBossDefeat();
+        bool requireBoth = m_gameConfig->GetRequireBossAndEnd();
+        bool bossDone = m_bossDefeated;
+
+        bool okAtTimeout = false;
+        if (bossRequired) {
+            okAtTimeout = requireBoth ? (bossDone && reachedEnd) : (bossDone || reachedEnd);
+        } else {
+            okAtTimeout = reachedEnd;
+        }
+
+        if (okAtTimeout) {
+            // Timeout after meeting needed conditions -> treat as Victory
+            std::cout << "✅ Timeout after meeting win conditions (boss=" << bossDone
+                      << ", reachedEnd=" << reachedEnd << ")\n";
+            if (auto* manager = GetStateManager()) {
+                if (auto* state = manager->GetState(GameStateType::GAME_OVER)) {
+                    if (auto* gameOver = dynamic_cast<GameOverState*>(state)) {
+                        gameOver->SetScore(m_score);
+                        gameOver->SetOutcome(GameOverState::Outcome::WIN);
+                        gameOver->SetRunTotal(m_totalRunScore + m_score);
+                        gameOver->SetNextLevel(m_gameConfig->GetNextLevelName());
+                    }
+                }
+                manager->ChangeState(GameStateType::GAME_OVER);
+            }
+            return;
+        } else {
+            std::cout << "Game Over - Time limit reached before defeating boss or reaching end (traveled="
+                      << traveled << "/" << endDistToUse << ")\n";
+            if (auto* manager = GetStateManager()) {
+                if (auto* state = manager->GetState(GameStateType::GAME_OVER)) {
+                    if (auto* gameOver = dynamic_cast<GameOverState*>(state)) {
+                        gameOver->SetScore(m_score);
+                        gameOver->SetOutcome(GameOverState::Outcome::LOSE);
+                    }
+                }
+                manager->ChangeState(GameStateType::GAME_OVER);
+            }
+            return;
+        }
+    }
+
+    // Total party KO check
+    if (PartyManager::Get().IsTotalPartyKO()) {
+        std::cout << "Game Over - Total party KO!\n";
         if (auto* manager = GetStateManager()) {
-            // Pass final score to GameOverState before transitioning
             if (auto* state = manager->GetState(GameStateType::GAME_OVER)) {
-                auto* gameOver = dynamic_cast<GameOverState*>(state);
-                if (gameOver) {
+                if (auto* gameOver = dynamic_cast<GameOverState*>(state)) {
                     gameOver->SetScore(m_score);
+                    gameOver->SetOutcome(GameOverState::Outcome::LOSE);
                 }
             }
             manager->ChangeState(GameStateType::GAME_OVER);
         }
+        return;
     }
+
 }
+
+
 
 void PlayingState::DrawScrollingBackground() {
     auto* renderer = GetRenderer();
@@ -912,6 +1113,8 @@ void PlayingState::ResetGameState() {
     m_cameraX = 0.0f;
     m_score = 0;
     m_gameTime = 0.0f;
+    m_bossDefeated = false;
+
 
     // Reset player position using current config
     m_playerX = m_gameConfig->GetPlayerStartX();
@@ -943,6 +1146,7 @@ void PlayingState::ResetGameState() {
             m_entityManager->AddSystem<AudioSystem>(*GetEngine()->GetAudioManager());
         }
 
+
         // Recreate entities
         CreatePlayer();
         CreateEnemies();
@@ -950,6 +1154,13 @@ void PlayingState::ResetGameState() {
 
     std::cout << "🔄 Game state reset for level: " <<
         (m_gameConfig->GetCurrentLevel().empty() ? "Base" : m_gameConfig->GetCurrentLevel()) << std::endl;
+}
+
+void PlayingState::LoadLevelAndReset(const std::string& levelName) {
+    if (m_gameConfig) {
+        m_gameConfig->LoadLevelConfig(levelName);
+        ResetGameState();
+    }
 }
 
 void PlayingState::CreateConfigAwareCharacter(const std::string& characterType, float x, float y, float difficultyMultiplier) {
@@ -1085,9 +1296,100 @@ void PlayingState::TriggerCombat(Entity player, Entity enemy) {
         std::vector<Entity> enemies = {enemy};
         combatState->InitializeCombat(player, enemies);
         combatState->SetReturnPosition(returnX, returnY);
+        // If any enemy in the encounter is a boss, mark it
+        bool bossEncounter = false;
+        if (auto* type = m_entityManager->GetComponent<CharacterTypeComponent>(enemy)) {
+            bossEncounter = (type->type == CharacterTypeComponent::CharacterType::BOSS);
+        }
+        combatState->SetBossEncounter(bossEncounter);
+
         std::cout << "Combat initialized with player " << player.GetID() << " vs enemy " << enemy.GetID() << std::endl;
     } else {
         std::cerr << "Error: Could not get CombatState after pushing" << std::endl;
+    }
+}
+
+
+void PlayingState::OnCombatEnded(bool playerWon, bool wasBossEncounter) {
+    // Re-enable collision after combat ends
+    m_collisionCooldown = 0.0f;
+    if (playerWon && wasBossEncounter) m_bossDefeated = true;
+
+    // If boss defeat is the win condition and this was a boss fight won, advance level
+    if (playerWon && wasBossEncounter && m_gameConfig->GetWinOnBossDefeat()) {
+        std::string nextLevel = m_gameConfig->GetNextLevelName();
+        if (!nextLevel.empty()) {
+            std::cout << "✅ Boss defeated! Prompting next level: " << nextLevel << std::endl;
+            // Prompt via GameOverState (Victory)
+            if (auto* manager = GetStateManager()) {
+                if (auto* state = manager->GetState(GameStateType::GAME_OVER)) {
+                    if (auto* gameOver = dynamic_cast<GameOverState*>(state)) {
+                        gameOver->SetScore(m_score);
+                        gameOver->SetOutcome(GameOverState::Outcome::WIN);
+                        gameOver->SetRunTotal(m_totalRunScore + m_score);
+                        gameOver->SetNextLevel(nextLevel);
+                    }
+                }
+                manager->ChangeState(GameStateType::GAME_OVER);
+            }
+            return;
+        }
+    }
+    // Otherwise, normal return handling
+    HandlePostCombatReturn();
+
+
+    // If the victory path is going to GameOver (WIN), do not also move the player back here
+    if (playerWon) return;
+
+    // Defeat-all-enemies progression
+    if (playerWon && m_gameConfig->GetWinOnDefeatAllEnemies()) {
+        // Determine if there are any remaining enemies on the field
+        if (m_entityManager) {
+            auto enemies = m_entityManager->GetEntitiesWith<CharacterTypeComponent>();
+            bool anyAliveEnemy = false;
+            for (auto e : enemies) {
+                auto* type = m_entityManager->GetComponent<CharacterTypeComponent>(e);
+                if (!type) continue;
+                if (type->type == CharacterTypeComponent::CharacterType::ENEMY ||
+                    type->type == CharacterTypeComponent::CharacterType::BOSS) {
+                    anyAliveEnemy = true;
+                    break;
+                }
+            }
+            if (!anyAliveEnemy) {
+                std::string nextLevel = m_gameConfig->GetNextLevelName();
+                if (!nextLevel.empty()) {
+                    std::cout << "✅ All enemies cleared! Prompting next level: " << nextLevel << std::endl;
+                    if (auto* manager = GetStateManager()) {
+                        if (auto* state = manager->GetState(GameStateType::GAME_OVER)) {
+                            if (auto* gameOver = dynamic_cast<GameOverState*>(state)) {
+                                gameOver->SetScore(m_score);
+                                gameOver->SetOutcome(GameOverState::Outcome::WIN);
+                                gameOver->SetRunTotal(m_totalRunScore + m_score);
+                                gameOver->SetNextLevel(nextLevel);
+                            }
+                        }
+                        manager->ChangeState(GameStateType::GAME_OVER);
+                    }
+                    return;
+                } else {
+                    // If no next level, treat as end of run victory
+                    if (auto* manager = GetStateManager()) {
+                        if (auto* state = manager->GetState(GameStateType::GAME_OVER)) {
+                            if (auto* gameOver = dynamic_cast<GameOverState*>(state)) {
+                                gameOver->SetScore(m_totalRunScore + m_score);
+                                gameOver->SetOutcome(GameOverState::Outcome::WIN);
+                                gameOver->SetRunTotal(m_totalRunScore + m_score);
+                                gameOver->SetNextLevel("");
+                            }
+                        }
+                        manager->ChangeState(GameStateType::GAME_OVER);
+                    }
+                    return;
+                }
+            }
+        }
     }
 }
 

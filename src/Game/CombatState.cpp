@@ -7,6 +7,8 @@
 #include "ECS/Component.h"
 #include "ECS/CombatSystems.h"
 #include "Game/PlayingState.h"
+#include "Game/InventoryManager.h"
+#include "Game/PartyManager.h"
 #include "Engine/SpriteRenderer.h"
 #include <iostream>
 #include <algorithm>
@@ -185,6 +187,9 @@ void CombatState::Render() {
         RenderActionMenu();
     }
 
+    // Render item menu if open
+    RenderItemMenu();
+
     // Render current message
     if (m_messageTimer > 0.0f) {
         RenderMessage();
@@ -197,6 +202,12 @@ void CombatState::Render() {
 void CombatState::HandleInput() {
     auto* input = GetInputManager();
     if (!input) return;
+
+    // Item menu overrides normal input when open
+    if (m_itemMenuOpen) {
+        HandleItemMenuInput();
+        return;
+    }
 
     // Handle input based on current phase
     switch (m_currentPhase) {
@@ -327,7 +338,8 @@ void CombatState::UpdateTransitionOut([[maybe_unused]] float deltaTime) {
             if (resumed && resumed->GetType() == GameStateType::PLAYING) {
                 auto* playing = dynamic_cast<PlayingState*>(resumed);
                 if (playing) {
-                    playing->HandlePostCombatReturn();
+                    // Delegate post-combat handling to PlayingState, which has level config context
+                    playing->OnCombatEnded(m_playerVictory, m_isBossEncounter);
                 }
             }
         } else {
@@ -489,10 +501,44 @@ void CombatState::ProcessPlayerAction() {
             // TODO: Implement magic system
             ShowMessage("Magic not yet implemented!", 1.5f);
             break;
-        case CombatAction::ITEM:
-            // TODO: Implement item system
-            ShowMessage("Items not yet implemented!", 1.5f);
+        case CombatAction::ITEM: {
+            // Simple item use: pick first available consumable that heals
+            auto& inv = InventoryManager::Get();
+            if (!inv.HasAny()) {
+                ShowMessage("No items!", 1.2f);
+                break;
+            }
+            const auto& items = inv.GetAll();
+            bool used = false;
+            for (const auto& stack : items) {
+                const auto* def = inv.GetItemDef(stack.id);
+                if (!def || def->type != "consumable") continue;
+                if ((def->healAmount > 0 || def->mpHealAmount > 0) && stack.quantity > 0) {
+                    // Heal the player participant (first player entry)
+                    for (auto& p : m_participants) {
+                        if (p.isPlayer) {
+                            bool applied = false;
+                            if (def->healAmount > 0 && p.currentHealth < p.maxHealth) {
+                                p.currentHealth = std::min(p.maxHealth, p.currentHealth + static_cast<float>(def->healAmount));
+                                applied = true;
+                                ShowMessage("Used " + def->name + " (" + std::to_string(def->healAmount) + " HP)", 1.5f);
+                            }
+                            // TODO: track MP on participants; for now, allow Ether in dedicated use flow below
+                            if (applied) {
+                                inv.RemoveItem(def->id, 1);
+                                used = true;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+            if (!used) {
+                ShowMessage("No usable items!", 1.2f);
+            }
             break;
+        }
         case CombatAction::FLEE:
             if (AttemptFlee()) {
                 m_playerFled = true;
@@ -515,20 +561,36 @@ void CombatState::ProcessEnemyAction(const CombatParticipant& participant) {
 }
 
 void CombatState::ExecuteAttack([[maybe_unused]] Entity attacker, Entity target) {
-    // Basic attack calculation
-    int damage = 15 + (rand() % 10); // 15-25 damage
+    // Basic attack calculation with simple equipment bonus for player
+    int damage = 15 + (rand() % 10); // 15-25 base damage
+
+    // If attacker is the player, add weapon atkBonus
+    // We only support a single player for now, index 0 in PartyManager
+    if (attacker.IsValid()) {
+        // Find if attacker is player participant
+        for (const auto& p : m_participants) {
+            if (p.entity.GetID() == attacker.GetID() && p.isPlayer) {
+                damage += PartyManager::Get().GetAttackWithEquipment(0);
+                break;
+            }
+        }
+    }
 
     // Apply damage to target participant
     for (auto& participant : m_participants) {
         if (participant.entity.GetID() == target.GetID()) {
-            participant.currentHealth -= damage;
+            // Simple defense mitigation using equipment
+            int mitigation = participant.isPlayer ? PartyManager::Get().GetDefenseWithEquipment(0) : 0;
+            int finalDamage = std::max(1, damage - mitigation);
+
+            participant.currentHealth -= finalDamage;
             if (participant.currentHealth <= 0) {
                 participant.currentHealth = 0;
                 participant.isAlive = false;
             }
 
             std::string targetName = participant.isPlayer ? "Player" : "Enemy";
-            ShowMessage(targetName + " takes " + std::to_string(damage) + " damage!", 1.5f);
+            ShowMessage(targetName + " takes " + std::to_string(finalDamage) + " damage!", 1.5f);
 
             if (!participant.isAlive) {
                 ShowMessage(targetName + " is defeated!", 2.0f);
@@ -569,6 +631,12 @@ void CombatState::HandleActionSelection() {
 
     // Select action
     if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN) || input->IsKeyJustPressed(SDL_SCANCODE_SPACE)) {
+        if (m_selectedAction == CombatAction::ITEM) {
+            // Open item selection menu
+            m_itemMenuOpen = true;
+            m_itemMenuIndex = 0;
+            return;
+        }
         m_currentPhase = CombatPhase::ACTION_EXECUTE;
         m_showActionMenu = false;
         m_phaseTimer = 0.0f;
@@ -675,6 +743,8 @@ void CombatState::RenderParticipants() {
             }
             if (frog && !idle.empty()) {
                 int fi = static_cast<int>(std::fmod(m_phaseTimer * 5.0f, static_cast<float>(idle.size())));
+
+
                 const SpriteFrame& f = idle[fi];
                 Rectangle src(f.x, f.y, f.width, f.height);
                 Rectangle dest(x, y, 28, 44);
@@ -789,6 +859,159 @@ void CombatState::RenderHealthBars() {
         std::string label = participant.isPlayer ? "PLAYER" : "ENEMY";
         BitmapFont::DrawText(renderer, label, barX, barY - 15, 1, Color(200, 200, 200, 255));
     }
+}
+
+// ===== Item Menu (bottom corner overlay) =====
+void CombatState::RenderItemMenu() {
+    if (!m_itemMenuOpen) return;
+    auto* r = GetRenderer();
+    if (!r) return;
+
+    int x = 220, y = 420, w = 360, h = 160;
+    r->DrawRectangle(Rectangle(x, y, w, h), Color(0,0,0,220), true);
+    r->DrawRectangle(Rectangle(x, y, w, h), Color(255,255,255,255), false);
+    BitmapFont::DrawText(r, "ITEMS", x + 10, y + 8, 2, Color(255,255,0,255));
+
+    const auto& inv = InventoryManager::Get();
+    const auto& items = inv.GetAll();
+
+    int row = 0;
+    int drawY = y + 36;
+    for (size_t i = 0; i < items.size() && row < 5; ++i) {
+        const auto* def = inv.GetItemDef(items[i].id);
+        if (!def || def->type != "consumable") continue;
+        std::string line = def->name + "  x" + std::to_string(items[i].quantity);
+        bool sel = (row == m_itemMenuIndex);
+        if (sel) r->DrawRectangle(Rectangle(x + 6, drawY - 2, w - 12, 18), Color(40,40,80,255), true);
+        BitmapFont::DrawText(r, line, x + 12, drawY, 1, sel ? Color(255,255,255,255) : Color(200,200,200,255));
+        if (!def->description.empty()) {
+            BitmapFont::DrawText(r, def->description, x + 12, drawY + 14, 1, Color(160,160,160,255));
+            drawY += 30;
+        } else {
+            drawY += 20;
+        }
+        ++row;
+    }
+
+    BitmapFont::DrawText(r, "UP/DOWN: Select  ENTER: Use  B/ESC: Cancel", x + 10, y + h - 18, 1, Color(180,180,180,255));
+    // If selecting target, overlay party list and highlight selection
+    if (m_itemMenuOpen && m_itemTargetSelecting) {
+        int x = 20, y = 340, w = 180, h = 120;
+        r->DrawRectangle(Rectangle(x, y, w, h), Color(0,0,0,220), true);
+        r->DrawRectangle(Rectangle(x, y, w, h), Color(255,255,255,255), false);
+        BitmapFont::DrawText(r, "TARGET", x + 8, y + 6, 2, Color(255,255,0,255));
+
+        int rowY = y + 32;
+        int shown = 0;
+        for (size_t i = 0; i < m_participants.size(); ++i) {
+            const auto& p = m_participants[i];
+            if (!p.isPlayer || !p.isAlive) continue;
+            bool sel = (shown == m_itemTargetIndex);
+            if (sel) r->DrawRectangle(Rectangle(x + 6, rowY - 2, w - 12, 18), Color(40,80,40,255), true);
+            std::string name = p.isPlayer ? std::string("Player") : std::string("Enemy");
+            std::string hp = std::to_string((int)p.currentHealth) + "/" + std::to_string((int)p.maxHealth) +
+                               "  MP: " + std::to_string((int)p.currentMana) + "/" + std::to_string((int)p.maxMana);
+            BitmapFont::DrawText(r, name + "  " + hp, x + 12, rowY, 1, sel?Color(255,255,255,255):Color(200,200,200,255));
+            rowY += 20;
+            ++shown;
+        }
+        BitmapFont::DrawText(r, "UP/DOWN: Select  ENTER: Confirm  B/ESC: Cancel", x + 8, y + h - 18, 1, Color(180,180,180,255));
+    }
+
+}
+
+void CombatState::HandleItemMenuInput() {
+    if (!m_itemMenuOpen) return;
+    auto* input = GetInputManager();
+    if (!input) return;
+
+    if (m_itemTargetSelecting) {
+        // Navigating targets
+        if (input->IsKeyJustPressed(SDL_SCANCODE_DOWN)) {
+            ++m_itemTargetIndex;
+        } else if (input->IsKeyJustPressed(SDL_SCANCODE_UP)) {
+            --m_itemTargetIndex;
+        } else if (input->IsKeyJustPressed(SDL_SCANCODE_ESCAPE) || input->IsKeyJustPressed(SDL_SCANCODE_B)) {
+            m_itemTargetSelecting = false;
+        } else if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN) || input->IsKeyJustPressed(SDL_SCANCODE_SPACE)) {
+            // Confirm target and use item
+            if (UseSelectedItem()) {
+                m_itemMenuOpen = false;
+                m_itemTargetSelecting = false;
+            } else {
+                // Keep target selection open to let user choose differently
+            }
+        }
+        return;
+    }
+
+    if (input->IsKeyJustPressed(SDL_SCANCODE_DOWN)) {
+        m_itemMenuIndex = (m_itemMenuIndex + 1) % 5;
+    } else if (input->IsKeyJustPressed(SDL_SCANCODE_UP)) {
+        m_itemMenuIndex = (m_itemMenuIndex - 1 + 5) % 5;
+    } else if (input->IsKeyJustPressed(SDL_SCANCODE_RETURN) || input->IsKeyJustPressed(SDL_SCANCODE_SPACE)) {
+        // Start target selection after choosing item
+        m_itemMenuChosenIndex = m_itemMenuIndex;
+        m_itemTargetSelecting = true;
+        m_itemTargetIndex = 0;
+        return;
+    } else if (input->IsKeyJustPressed(SDL_SCANCODE_ESCAPE) || input->IsKeyJustPressed(SDL_SCANCODE_B)) {
+        m_itemMenuOpen = false;
+    }
+}
+
+bool CombatState::UseSelectedItem() {
+    auto& inv = InventoryManager::Get();
+    const auto& items = inv.GetAll();
+
+    // Map visible index based on saved chosen index and find target row among players
+    int chosenRow = m_itemMenuChosenIndex >= 0 ? m_itemMenuChosenIndex : m_itemMenuIndex;
+
+    int row = 0;
+    const InventoryManager::ItemDef* chosenDef = nullptr;
+    size_t chosenItemIdx = 0;
+    for (size_t i = 0; i < items.size(); ++i) {
+        const auto* def = inv.GetItemDef(items[i].id);
+        if (!def || def->type != "consumable") continue;
+        if (row == chosenRow && items[i].quantity > 0) {
+            chosenDef = def;
+            chosenItemIdx = i;
+            break;
+        }
+        ++row;
+    }
+
+    if (!chosenDef) {
+        ShowMessage("No usable items!", 1.2f);
+        return false;
+    }
+
+    // Find the nth player target based on m_itemTargetIndex
+    int shown = 0;
+    for (auto& p : m_participants) {
+        if (!p.isPlayer || !p.isAlive) continue;
+        if (shown == m_itemTargetIndex) {
+            // HP or MP heal
+            if (chosenDef->healAmount > 0 && p.currentHealth < p.maxHealth) {
+                p.currentHealth = std::min(p.maxHealth, p.currentHealth + static_cast<float>(chosenDef->healAmount));
+                inv.RemoveItem(items[chosenItemIdx].id, 1);
+                ShowMessage("Used " + chosenDef->name + " (" + std::to_string(chosenDef->healAmount) + " HP)", 1.5f);
+                return true;
+            } else if (chosenDef->mpHealAmount > 0 && p.currentMana < p.maxMana) {
+                p.currentMana = std::min(p.maxMana, p.currentMana + static_cast<float>(chosenDef->mpHealAmount));
+                inv.RemoveItem(items[chosenItemIdx].id, 1);
+                ShowMessage("Used " + chosenDef->name + " (" + std::to_string(chosenDef->mpHealAmount) + " MP)", 1.5f);
+                return true;
+            } else {
+                ShowMessage("Can't use this item now.", 1.0f);
+                return false;
+            }
+        }
+        ++shown;
+    }
+
+    ShowMessage("No target!", 1.0f);
+    return false;
 }
 
 void CombatState::RenderMessage() {

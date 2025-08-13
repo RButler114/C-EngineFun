@@ -257,7 +257,7 @@ private:
  */
 int main() {
     // Welcome message with visual flair
-    std::cout << "🎮 ARCADE GAME ENGINE 🎮" << std::endl;
+    std::cout << "Everharvest GAME ENGINE" << std::endl;
 
     // Create the main game instance
     // This is lightweight - just sets up the object structure
@@ -265,39 +265,25 @@ int main() {
 
     // Initialize all game systems (window, renderer, audio, states, etc.)
     // This is where the heavy lifting happens - loading resources, setting up OpenGL, etc.
-    if (!game.Initialize("🎮 Everharvest Voyager V 🎮", 800, 600)) {
+    if (!game.Initialize("Everharvest Voyager V", 800, 600)) {
         // If initialization fails, log the error and exit gracefully
         // Common causes: missing graphics drivers, audio issues, file permissions
-        std::cerr << "❌ Failed to initialize game!" << std::endl;
+        std::cerr << "   Failed to initialize game!" << std::endl;
         std::cerr << "   Check that your graphics drivers are up to date" << std::endl;
         std::cerr << "   and that the game has permission to access audio/graphics" << std::endl;
         return -1;
     }
-
-    // Display feature list to help new developers understand what's available
-    std::cout << "\n🎮 ARCADE GAME 🎮" << std::endl;
-    std::cout << "Features implemented and ready to use:" << std::endl;
-    std::cout << "  ✅ Menu system with navigation" << std::endl;
-    std::cout << "  ✅ Game state management" << std::endl;
-    std::cout << "  ✅ Side-scrolling gameplay" << std::endl;
-    std::cout << "  ✅ Sprite animation" << std::endl;
-    std::cout << "  ✅ Audio system" << std::endl;
-    std::cout << "  ✅ Collision detection" << std::endl;
-    std::cout << "\n🎯 Use WASD or Arrow Keys to move" << std::endl;
-    std::cout << "🎯 Press ESC to access menus" << std::endl;
-    std::cout << "🎯 Window shows FPS in title bar" << std::endl;
-
     // Start the main game loop - this runs until the user closes the window
     // The Run() method handles:
     // - Event processing (input, window events)
     // - Update() calls (game logic)
     // - Render() calls (drawing)
     // - Frame rate limiting/VSync
-    std::cout << "\n🚀 Starting game loop..." << std::endl;
+    std::cout << "\n Starting game loop..." << std::endl;
     game.Run();
 
     // Game loop has ended (user closed window)
-    std::cout << "\n👋 Thanks for playing!" << std::endl;
+    std::cout << "\n Thanks for playing!" << std::endl;
 
     // Return success code
     // Note: All cleanup happens automatically via destructors (RAII)

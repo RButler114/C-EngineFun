@@ -19,8 +19,7 @@
 enum class CustomizationCategory {
     BASIC_INFO,     // Name, class
     APPEARANCE,     // Hair, skin, eyes
-    ATTRIBUTES,     // Stats distribution
-    EQUIPMENT       // Starting gear (future expansion)
+    ATTRIBUTES      // Stats distribution (equipment handled in-game)
 };
 
 /**
@@ -69,20 +68,21 @@ struct CustomizationGroup {
 struct PlayerCustomization {
     // Basic Info
     std::string playerName = "Hero";
-    std::string characterClass = "warrior";
-    
+    // Leave class empty by default; will be set from config-defined classes
+    std::string characterClass = "";
+
     // Appearance
     std::string hairColor = "brown";
     std::string skinTone = "medium";
     std::string eyeColor = "brown";
     std::string hairStyle = "short";
-    
+
     // Attributes (point distribution)
     float strength = 15.0f;
     float agility = 12.0f;
     float intelligence = 10.0f;
     float vitality = 15.0f;
-    int availablePoints = 0;  // Points left to distribute
+    int availablePoints = 10; // Points left to distribute
     
     // Equipment (for future expansion)
     std::string startingWeapon = "sword";
@@ -96,7 +96,7 @@ struct PlayerCustomization {
      */
     void Reset() {
         playerName = "Hero";
-        characterClass = "warrior";
+        characterClass = ""; // set after config class selection
         hairColor = "brown";
         skinTone = "medium";
         eyeColor = "brown";

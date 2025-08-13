@@ -10,6 +10,8 @@ struct CharacterStatsData {
     float agility = 10.0f;
     float intelligence = 10.0f;
     float vitality = 10.0f;
+    float maxMana = 30.0f;
+
 };
 
 class CharacterDataRegistry {
